@@ -17,7 +17,7 @@ namespace PastasBarra
     {
         const string ChaveUn = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\PastasBarra";
         const string ChaveRun = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        public const string Versao = "0.2.3";
+        public const string Versao = "0.2.4";
 
         public static readonly string Pasta = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "PastasBarra");
@@ -130,6 +130,7 @@ namespace PastasBarra
             Width = 480; SizeToContent = SizeToContent.Height;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             ResizeMode = ResizeMode.NoResize;
+            ShowInTaskbar = false;
             Background = Ui.Pincel("#FFFAFAFA");
 
             var pl = new StackPanel { Margin = new Thickness(24) };

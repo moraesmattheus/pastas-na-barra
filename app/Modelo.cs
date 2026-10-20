@@ -19,6 +19,7 @@ namespace PastasBarra
     {
         public string Id;
         public string Nome;
+        public string Rotulo;    // texto/sigla exibido no icone (se vazio, usa modo auto)
         public string Cor = "#475569";
         public bool MostrarNome;
         public string IcoArq;

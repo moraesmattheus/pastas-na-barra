@@ -16,7 +16,10 @@ namespace PastasBarra
             Title = "Pastas na barra · Configurações";
             Width = 560; Height = 600;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            ResizeMode = ResizeMode.NoResize;
+            ShowInTaskbar = false;
             Background = Ui.Pincel("#FFFAFAFA");
+            KeyDown += (s, e) => { if (e.Key == System.Windows.Input.Key.Escape) Close(); };
 
             var g = new Grid { Margin = new Thickness(20) };
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });

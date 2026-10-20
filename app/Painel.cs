@@ -267,7 +267,12 @@ namespace PastasBarra
             acoes.Children.Add(Acao("Configurações", () => { FecharSuave(); App.AbrirConfiguracoes(); }, false));
             acoes.Children.Add(Acao("Excluir", Excluir, true));
             var acoes2 = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 6, 0, 0) };
-            acoes2.Children.Add(Acao(_pasta.MostrarNome ? "Nome no \u00edcone: ligado \u2713" : "Nome no \u00edcone: desligado", () => { _pasta.MostrarNome = !_pasta.MostrarNome; Salvar(); }, false));
+            acoes2.Children.Add(Acao(_pasta.MostrarNome ? "Nome no ícone: ligado ✓" : "Nome no ícone: desligado", () => { _pasta.MostrarNome = !_pasta.MostrarNome; Salvar(); }, false));
+            if (_pasta.MostrarNome)
+            {
+                var txtRot = string.IsNullOrEmpty(_pasta.Rotulo) ? "Texto: Auto (" + Shell.ObterTextoIcone(_pasta) + ")" : "Texto: " + _pasta.Rotulo;
+                acoes2.Children.Add(Acao(txtRot, DefinirRotulo, false));
+            }
             var gravar = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) };
             var botaoSalvar = Acao(_alterado ? "Salvar altera\u00e7\u00f5es" : "Tudo salvo \u2713", () => { if (_alterado) Persistir(); }, false);
             if (_alterado) botaoSalvar.Background = Ui.Pincel("#2E9E5B");
@@ -461,10 +466,19 @@ namespace PastasBarra
             string nome = null;
             Dialogo(() => nome = Ui.PedirTexto(this, "Renomear pasta", _pasta.Nome));
             if (nome == null || nome == _pasta.Nome) return;
-            if (!Repo.NomeDisponivel(nome, _pasta)) { Dialogo(() => MessageBox.Show("J\u00e1 existe uma pasta com esse nome.", "Renomear pasta")); return; }
+            if (!Repo.NomeDisponivel(nome, _pasta)) { Dialogo(() => MessageBox.Show("Já existe uma pasta com esse nome.", "Renomear pasta")); return; }
             Shell.ApagarAtalho(_pasta);
             _pasta.Nome = nome;
             Persistir();
+        }
+
+        void DefinirRotulo()
+        {
+            string texto = null;
+            Dialogo(() => texto = Ui.PedirTexto(this, "Texto no ícone da barra", _pasta.Rotulo ?? ""));
+            if (texto == null) return;
+            _pasta.Rotulo = string.IsNullOrWhiteSpace(texto) ? null : texto.Trim();
+            Salvar();
         }
 
         void MudarCor()

@@ -60,6 +60,7 @@ namespace PastasBarra
                 Width = largura,
                 SizeToContent = SizeToContent.Height,
                 ResizeMode = ResizeMode.NoResize,
+                ShowInTaskbar = false,
                 Topmost = true,
                 WindowStartupLocation = WindowStartupLocation.CenterScreen
             };

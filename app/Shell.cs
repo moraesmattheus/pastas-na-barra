@@ -330,6 +330,54 @@ namespace PastasBarra
             return Path.Combine(Repo.Atalhos, Repo.NomeArquivo(p.Nome) + ".lnk");
         }
 
+        public static string ObterTextoIcone(Pasta p)
+        {
+            if (!string.IsNullOrEmpty(p.Rotulo)) return p.Rotulo.Trim();
+            string n = (p.Nome ?? "").Trim();
+            if (n.Length <= 4) return n;
+
+            var aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "Produtividade", "PROD" },
+                { "Produtivos", "PROD" },
+                { "Desenvolvimento", "DEV" },
+                { "Programação", "DEV" },
+                { "Programacao", "DEV" },
+                { "Sistema", "SIST" },
+                { "Configurações", "CONF" },
+                { "Configuracoes", "CONF" },
+                { "Ferramentas", "UTIL" },
+                { "Utilitários", "UTIL" },
+                { "Utilitarios", "UTIL" },
+                { "Redes Sociais", "REDES" },
+                { "Social", "SOC" },
+                { "Comunicação", "CHAT" },
+                { "Comunicacao", "CHAT" },
+                { "Inteligência Artificial", "IA" },
+                { "Inteligencia Artificial", "IA" },
+                { "Multimídia", "MIDIA" },
+                { "Multimidia", "MIDIA" },
+                { "Navegadores", "WEB" },
+                { "Arquivos", "DOCS" },
+                { "Documentos", "DOCS" },
+                { "Microsoft", "MSFT" },
+                { "Google", "GOOG" }
+            };
+
+            string alias;
+            if (aliases.TryGetValue(n, out alias)) return alias;
+
+            if (n.Contains(" "))
+            {
+                var partes = n.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (partes[0].Length <= 5) return partes[0];
+                return partes[0].Substring(0, 4);
+            }
+
+            if (n.Length > 5) return n.Substring(0, 4);
+            return n;
+        }
+
         // Desenha o mosaico 3x3 (e, se ligado, o nome embaixo) em um quadrado de t x t pixels.
         public static Bitmap DesenharMosaico(Pasta p, int t)
         {
@@ -340,8 +388,8 @@ namespace PastasBarra
                 g.InterpolationMode = InterpolationMode.HighQualityBicubic;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
                 bool nome = p.MostrarNome && t >= 24;
-                float s = nome ? t * 0.60f : t;                 // lado do mosaico (menor para sobrar espaco para o nome)
-                float x0 = (t - s) / 2f, y0 = nome ? t * 0.01f : 0f;
+                float s = nome ? t * 0.52f : t;                 // mosaico fica em 52% dando bastante espaco para o nome
+                float x0 = (t - s) / 2f, y0 = 0f;
                 float m = s * 0.03f, w = s - 2 * m, r = s * 0.22f;
                 var path = new GraphicsPath();
                 path.AddArc(x0 + m, y0 + m, r, r, 180, 90); path.AddArc(x0 + m + w - r, y0 + m, r, r, 270, 90);
@@ -366,26 +414,47 @@ namespace PastasBarra
                 }
                 if (nome)
                 {
-                    // O nome tem que ser legivel no icone pequeno da barra: fonte grande, e o texto encurta se nao couber.
-                    float altura = t - (y0 + s);
+                    float yTexto = y0 + s + (t * 0.02f);
+                    float altura = t - yTexto;
                     float largura = t * 0.98f;
-                    float tam = t * 0.36f, minimo = Math.Max(7f, t * 0.24f);
-                    string texto = p.Nome;
+                    float tam = Math.Min(altura * 0.72f, t * 0.36f);
+                    float minimo = Math.Max(7f, t * 0.22f);
+                    string texto = ObterTextoIcone(p);
                     Font fonte = new Font("Segoe UI", tam, FontStyle.Bold, GraphicsUnit.Pixel);
-                    while (g.MeasureString(texto, fonte).Width > largura)
+                    while (g.MeasureString(texto, fonte).Width > largura && tam > minimo)
                     {
-                        if (tam > minimo) { tam -= 0.5f; fonte.Dispose(); fonte = new Font("Segoe UI", tam, FontStyle.Bold, GraphicsUnit.Pixel); }
-                        else if (texto.Contains(" ")) texto = texto.Substring(0, texto.IndexOf(' '));   // so a primeira palavra
-                        else if (texto.Length > 1) texto = texto.Substring(0, texto.Length - 1);          // corta letras
-                        else break;
+                        tam -= 0.5f;
+                        fonte.Dispose();
+                        fonte = new Font("Segoe UI", tam, FontStyle.Bold, GraphicsUnit.Pixel);
                     }
                     using (fonte)
                     using (var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap })
                     {
-                        var ret = new RectangleF(0, y0 + s, t, altura);
+                        var ret = new RectangleF(0, yTexto, t, altura);
+
+                        // Pilula de fundo translucida para contraste e nitidez absoluta
+                        var sz = g.MeasureString(texto, fonte);
+                        float pw = Math.Min(t * 0.98f, sz.Width + (t * 0.08f));
+                        float ph = Math.Min(altura, sz.Height * 0.90f);
+                        var pill = new RectangleF((t - pw) / 2f, ret.Y + (ret.Height - ph) / 2f, pw, ph);
+                        float pr = Math.Min(pill.Width, pill.Height) * 0.35f;
+                        if (pr > 1f && t >= 32)
+                        {
+                            using (var ppath = new GraphicsPath())
+                            {
+                                ppath.AddArc(pill.X, pill.Y, pr * 2, pr * 2, 180, 90);
+                                ppath.AddArc(pill.Right - pr * 2, pill.Y, pr * 2, pr * 2, 270, 90);
+                                ppath.AddArc(pill.Right - pr * 2, pill.Bottom - pr * 2, pr * 2, pr * 2, 0, 90);
+                                ppath.AddArc(pill.X, pill.Bottom - pr * 2, pr * 2, pr * 2, 90, 90);
+                                ppath.CloseFigure();
+                                using (var pb = new SolidBrush(Color.FromArgb(175, 15, 23, 42)))
+                                    g.FillPath(pb, ppath);
+                            }
+                        }
+
                         float d = Math.Max(1f, t / 64f);
                         var sombra = new RectangleF(ret.X + d, ret.Y + d, ret.Width, ret.Height);
-                        using (var bs = new SolidBrush(Color.FromArgb(230, 0, 0, 0))) g.DrawString(texto, fonte, bs, sombra, fmt);
+                        using (var bs = new SolidBrush(Color.FromArgb(200, 0, 0, 0))) g.DrawString(texto, fonte, bs, sombra, fmt);
                         g.DrawString(texto, fonte, Brushes.White, ret, fmt);
                     }
                 }
@@ -395,7 +464,7 @@ namespace PastasBarra
 
         static string Assinatura(Pasta p)
         {
-            return "v2|" + p.Cor + "|" + p.MostrarNome + "|" + p.Nome + "|" + string.Join(",", p.Apps.Take(9).Select(a => a.Icone));
+            return "v4|" + p.Cor + "|" + p.MostrarNome + "|" + p.Nome + "|" + p.Rotulo + "|" + string.Join(",", p.Apps.Take(9).Select(a => a.Icone));
         }
 
         // Gera o .ico com varios tamanhos (a barra escolhe o mais nitido). Usa um nome novo a cada mudanca

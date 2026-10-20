@@ -52,6 +52,8 @@ namespace PastasBarra
             Title = "Pastas na barra · Configuração inicial";
             Width = 560; Height = 700;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            ResizeMode = ResizeMode.NoResize;
+            ShowInTaskbar = false;
             Background = Ui.Pincel("#FFFAFAFA");
 
             var raiz = new Grid { Margin = new Thickness(22) };
@@ -169,6 +171,8 @@ namespace PastasBarra
             Title = "Fixe suas pastas na barra de tarefas";
             Width = 600; SizeToContent = SizeToContent.Height; MaxHeight = 720;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            ResizeMode = ResizeMode.NoResize;
+            ShowInTaskbar = false;
             Background = Ui.Pincel("#FFFAFAFA");
 
             var pilha = new StackPanel { Margin = new Thickness(22) };
