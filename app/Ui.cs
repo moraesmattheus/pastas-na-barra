@@ -117,94 +117,18 @@ namespace PastasBarra
 
             if (TemaEscuro)
             {
-                Func<byte, byte, byte> mistura = (a, b) => (byte)(a * 0.26 + b * 0.74);
-                var br = new SolidColorBrush(Color.FromArgb(alpha, mistura(c.R, 0x12), mistura(c.G, 0x14), mistura(c.B, 0x1E)));
+                Func<byte, byte, byte> mistura = (a, b) => (byte)(a * 0.18 + b * 0.82);
+                var br = new SolidColorBrush(Color.FromArgb(alpha, mistura(c.R, 0x14), mistura(c.G, 0x16), mistura(c.B, 0x22)));
                 br.Freeze();
                 return br;
             }
             else
             {
-                Func<byte, byte, byte> mistura = (a, b) => (byte)(a * 0.12 + b * 0.88);
+                Func<byte, byte, byte> mistura = (a, b) => (byte)(a * 0.10 + b * 0.90);
                 var br = new SolidColorBrush(Color.FromArgb(alpha, mistura(c.R, 0xF8), mistura(c.G, 0xFA), mistura(c.B, 0xFC)));
                 br.Freeze();
                 return br;
             }
-        }
-
-        // ---------- Efeito Vidro Acrilico Nativo via DWM (GPU-accelerated, 0% CPU) ----------
-        enum AccentState
-        {
-            ACCENT_DISABLED = 0,
-            ACCENT_ENABLE_GRADIENT = 1,
-            ACCENT_ENABLE_TRANSPARENTGRADIENT = 2,
-            ACCENT_ENABLE_BLURBEHIND = 3,
-            ACCENT_ENABLE_ACRYLICBLURBEHIND = 4
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        struct AccentPolicy
-        {
-            public AccentState AccentState;
-            public int AccentFlags;
-            public int GradientColor;
-            public int AnimationId;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        struct WindowCompositionAttributeData
-        {
-            public int Attribute;
-            public IntPtr Data;
-            public int SizeOfData;
-        }
-
-        [DllImport("user32.dll")]
-        static extern int SetWindowCompositionAttribute(IntPtr hwnd, ref WindowCompositionAttributeData data);
-
-        public static void AplicarAcrilicoNativo(Window window, string corHex = null)
-        {
-            try
-            {
-                var handle = new System.Windows.Interop.WindowInteropHelper(window).Handle;
-                if (handle == IntPtr.Zero) return;
-
-                int corArgb = 0;
-                if (!string.IsNullOrEmpty(corHex))
-                {
-                    try
-                    {
-                        var c = (Color)ColorConverter.ConvertFromString(corHex);
-                        corArgb = (0x01 << 24) | (c.B << 16) | (c.G << 8) | c.R;
-                    }
-                    catch { }
-                }
-
-                var policy = new AccentPolicy
-                {
-                    AccentState = AccentState.ACCENT_ENABLE_ACRYLICBLURBEHIND,
-                    AccentFlags = 2,
-                    GradientColor = corArgb
-                };
-
-                int size = Marshal.SizeOf(policy);
-                IntPtr policyPtr = Marshal.AllocHGlobal(size);
-                try
-                {
-                    Marshal.StructureToPtr(policy, policyPtr, false);
-                    var data = new WindowCompositionAttributeData
-                    {
-                        Attribute = 19, // WCA_ACCENT_POLICY
-                        Data = policyPtr,
-                        SizeOfData = size
-                    };
-                    SetWindowCompositionAttribute(handle, ref data);
-                }
-                finally
-                {
-                    Marshal.FreeHGlobal(policyPtr);
-                }
-            }
-            catch { }
         }
 
         public static SolidColorBrush Pincel(string hex)

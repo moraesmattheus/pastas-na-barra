@@ -84,19 +84,11 @@ namespace PastasBarra
             {
                 CornerRadius = Ui.CantosPainel,
                 Padding = new Thickness(16),
-                Margin = new Thickness(10),
+                Margin = new Thickness(12),
                 Background = Ui.FundoPainel(p.Cor),
                 BorderBrush = Ui.BordaPainel(),
                 BorderThickness = new Thickness(1),
                 Effect = Ui.SombraProfundidade
-            };
-
-            SourceInitialized += (s, e) =>
-            {
-                if (string.Equals(Repo.Dados.EstiloVisual, "Vidro", StringComparison.OrdinalIgnoreCase))
-                {
-                    Ui.AplicarAcrilicoNativo(this, _pasta.Cor);
-                }
             };
 
             // cabecalho: titulo no centro + engrenagem
