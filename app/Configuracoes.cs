@@ -51,10 +51,13 @@ namespace PastasBarra
             var auto = new CheckBox { Content = "Avisar quando houver vers\u00e3o nova (consulta o GitHub; n\u00e3o baixa nada sozinho)", IsChecked = Repo.Dados.AtualizarAuto, Margin = new Thickness(0, 6, 0, 0) };
             auto.Click += (s, e) => { Repo.Dados.AtualizarAuto = auto.IsChecked == true; Repo.Salvar(); };
             var linhaVersao = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
-            var verificar = new Button { Content = "Verificar atualiza\u00e7\u00f5es agora", Padding = new Thickness(12, 6, 12, 6) };
+            var btnFixar = new Button { Content = "Fixar pastas / Separador na barra", Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(0, 0, 8, 0) };
+            btnFixar.Click += (s, e) => App.MostrarFixar(Repo.Dados.Pastas);
+            var verificar = new Button { Content = "Verificar atualizações agora", Padding = new Thickness(12, 6, 12, 6) };
             verificar.Click += (s, e) => App.VerificarAtualizacao(true);
+            linhaVersao.Children.Add(btnFixar);
             linhaVersao.Children.Add(verificar);
-            linhaVersao.Children.Add(new TextBlock { Text = "Vers\u00e3o " + Instalador.Versao, Foreground = Brushes.Gray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) });
+            linhaVersao.Children.Add(new TextBlock { Text = "Versão " + Instalador.Versao, Foreground = Brushes.Gray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) });
             rodape.Children.Add(inicio); rodape.Children.Add(auto); rodape.Children.Add(linhaVersao);
             Grid.SetRow(rodape, 2);
             g.Children.Add(rodape);

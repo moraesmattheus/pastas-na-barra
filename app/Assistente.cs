@@ -162,6 +162,7 @@ namespace PastasBarra
     {
         readonly List<Tuple<Pasta, TextBlock>> _linhas = new List<Tuple<Pasta, TextBlock>>();
         readonly DispatcherTimer _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+        TextBlock _estadoSep;
 
         public FixarJanela(IEnumerable<Pasta> pastas)
         {
@@ -171,10 +172,10 @@ namespace PastasBarra
             Background = Ui.Pincel("#FFFAFAFA");
 
             var pilha = new StackPanel { Margin = new Thickness(22) };
-            pilha.Children.Add(new TextBlock { Text = "Último passo: fixar na barra", FontSize = 22, FontWeight = FontWeights.SemiBold });
+            pilha.Children.Add(new TextBlock { Text = "Fixar na barra de tarefas", FontSize = 22, FontWeight = FontWeights.SemiBold });
             pilha.Children.Add(new TextBlock
             {
-                Text = "Arraste cada ícone abaixo e solte na barra de tarefas (lá embaixo). O Windows só permite fixar assim, uma vez por pasta. Depois, se quiser, desafixe os apps soltos que entraram numa pasta.",
+                Text = "Arraste cada pasta abaixo e solte na barra de tarefas (lá embaixo). Dica: use o Separador visual para dividir suas pastas dos aplicativos abertos no Windows.",
                 TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 14), Foreground = Brushes.Gray
             });
 
@@ -203,6 +204,30 @@ namespace PastasBarra
                 wrap.Children.Add(item);
                 _linhas.Add(Tuple.Create(pasta, estado));
             }
+
+            // Separador (divisor visual)
+            Shell.GerarSeparador();
+            var imgSep = new Image { Width = 72, Height = 72, Source = ImgSeparador(), Cursor = Cursors.Hand, ToolTip = "Arraste para a barra de tarefas para separar as pastas dos apps normais" };
+            RenderOptions.SetBitmapScalingMode(imgSep, BitmapScalingMode.HighQuality);
+            Point? iniSep = null;
+            imgSep.MouseLeftButtonDown += (s, e) => iniSep = e.GetPosition(null);
+            imgSep.MouseMove += (s, e) =>
+            {
+                if (e.LeftButton != MouseButtonState.Pressed || iniSep == null) return;
+                var d = e.GetPosition(null) - iniSep.Value;
+                if (Math.Abs(d.X) < 6 && Math.Abs(d.Y) < 6) return;
+                iniSep = null;
+                var dados = new DataObject(DataFormats.FileDrop, new[] { Shell.CaminhoAtalhoSeparador });
+                DragDrop.DoDragDrop(imgSep, dados, DragDropEffects.Copy | DragDropEffects.Link | DragDropEffects.Move);
+            };
+            var estadoSep = new TextBlock { FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 2, 0, 0) };
+            var itemSep = new StackPanel { Margin = new Thickness(12), Width = 100 };
+            itemSep.Children.Add(imgSep);
+            itemSep.Children.Add(new TextBlock { Text = "│ Separador", HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 6, 0, 0), FontWeight = FontWeights.SemiBold });
+            itemSep.Children.Add(estadoSep);
+            wrap.Children.Add(itemSep);
+            _estadoSep = estadoSep;
+
             pilha.Children.Add(new ScrollViewer { Content = wrap, MaxHeight = 420, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
 
             var rodape = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
@@ -218,6 +243,19 @@ namespace PastasBarra
             _timer.Tick += (s, e) => Atualizar();
             _timer.Start();
             Closed += (s, e) => _timer.Stop();
+        }
+
+        static BitmapImage ImgSeparador()
+        {
+            using (var bmp = Shell.DesenharSeparador(144))
+            using (var ms = new MemoryStream())
+            {
+                bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                ms.Position = 0;
+                var bi = new BitmapImage();
+                bi.BeginInit(); bi.CacheOption = BitmapCacheOption.OnLoad; bi.StreamSource = ms; bi.EndInit(); bi.Freeze();
+                return bi;
+            }
         }
 
         static BitmapImage Mosaico(Pasta p)
@@ -241,6 +279,12 @@ namespace PastasBarra
                 bool fixada = ids.Contains(l.Item1.Id);
                 l.Item2.Text = fixada ? "✓ fixada" : "arraste para a barra";
                 l.Item2.Foreground = fixada ? Brushes.SeaGreen : Brushes.Gray;
+            }
+            if (_estadoSep != null)
+            {
+                bool fixado = Shell.SeparadorFixado();
+                _estadoSep.Text = fixado ? "✓ fixado" : "arraste para a barra";
+                _estadoSep.Foreground = fixado ? Brushes.SeaGreen : Brushes.Gray;
             }
         }
     }

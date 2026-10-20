@@ -186,7 +186,10 @@ namespace PastasBarra
         static void IniciarNormal(string abrir, bool bandeja)
         {
             if (Repo.Dados.PrimeiraVezConcluida)
+            {
                 foreach (var p in Repo.Dados.Pastas) { try { Shell.AtualizarPasta(p); } catch { } }
+                try { Shell.GerarSeparador(); } catch { }
+            }
             if (!Repo.Dados.PrimeiraVezConcluida) AbrirAssistente();
             else if (abrir != null) AbrirPasta(abrir);
             else if (!bandeja) AbrirConfiguracoes();

@@ -436,6 +436,81 @@ namespace PastasBarra
             Repo.Salvar();
         }
 
+        // ---------- separador / divisor visual na barra de tarefas ----------
+        public static readonly string CaminhoAtalhoSeparador = Path.Combine(Repo.Atalhos, "│ Separador.lnk");
+        public static readonly string CaminhoIconeSeparador = Path.Combine(Repo.Icones, "_separador.ico");
+
+        public static Bitmap DesenharSeparador(int t)
+        {
+            var bmp = new Bitmap(t, t, PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.Clear(Color.Transparent);
+                float larg = Math.Max(2f, t * 0.045f);
+                float alt = t * 0.52f;
+                float x = (t - larg) / 2f;
+                float y = (t - alt) / 2f;
+                float raio = larg / 2f;
+                var path = new GraphicsPath();
+                path.AddArc(x, y, larg, larg, 180, 180);
+                path.AddArc(x, y + alt - larg, larg, larg, 0, 180);
+                path.CloseFigure();
+                // Linha semitransparente em tom neutro que combina com tema escuro e claro
+                using (var br = new SolidBrush(Color.FromArgb(180, 160, 174, 192)))
+                    g.FillPath(br, path);
+            }
+            return bmp;
+        }
+
+        public static void GerarSeparador()
+        {
+            if (File.Exists(CaminhoAtalhoSeparador) && File.Exists(CaminhoIconeSeparador)) return;
+            int[] tamanhos = { 16, 24, 32, 48, 64, 256 };
+            var pngs = new List<byte[]>();
+            foreach (int t in tamanhos)
+                using (var bmp = DesenharSeparador(t))
+                using (var ms = new MemoryStream())
+                {
+                    bmp.Save(ms, ImageFormat.Png);
+                    pngs.Add(ms.ToArray());
+                }
+
+            using (var fs = File.Create(CaminhoIconeSeparador))
+            using (var bw = new BinaryWriter(fs))
+            {
+                bw.Write((ushort)0); bw.Write((ushort)1); bw.Write((ushort)tamanhos.Length);
+                uint offset = (uint)(6 + 16 * tamanhos.Length);
+                for (int i = 0; i < tamanhos.Length; i++)
+                {
+                    byte d = (byte)(tamanhos[i] >= 256 ? 0 : tamanhos[i]);
+                    bw.Write(d); bw.Write(d); bw.Write((byte)0); bw.Write((byte)0);
+                    bw.Write((ushort)1); bw.Write((ushort)32); bw.Write((uint)pngs[i].Length); bw.Write(offset);
+                    offset += (uint)pngs[i].Length;
+                }
+                foreach (var png in pngs) bw.Write(png);
+            }
+
+            string alvo = Instalador.RodandoInstalado() ? Instalador.ExeInstalado : Process.GetCurrentProcess().MainModule.FileName;
+            CriarAtalho(CaminhoAtalhoSeparador, alvo, "--separador", CaminhoIconeSeparador + ",0", "Separador da barra de tarefas");
+        }
+
+        public static bool SeparadorFixado()
+        {
+            try
+            {
+                if (!Directory.Exists(PastaFixados)) return false;
+                foreach (var f in Directory.GetFiles(PastaFixados, "*.lnk"))
+                {
+                    string alvo, args, ico; int idx;
+                    if (LerAtalho(f, out alvo, out args, out ico, out idx))
+                        if ((args ?? "").Contains("--separador")) return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
         // ---------- atalhos nativos via COM (sem WScript.Shell / scripts) ----------
         [ComImport, Guid("00021401-0000-0000-C000-000000000046")]
         class ShellLink { }

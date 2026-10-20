@@ -17,7 +17,7 @@ namespace PastasBarra
     {
         const string ChaveUn = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\PastasBarra";
         const string ChaveRun = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        public const string Versao = "0.2.2";
+        public const string Versao = "0.2.3";
 
         public static readonly string Pasta = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "PastasBarra");

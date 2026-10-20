@@ -37,6 +37,8 @@ namespace PastasBarra
                     if (!args[i].StartsWith("--")) soltos.Add(args[i]);
             bool bandeja = args.Contains("--bandeja");
 
+            if (args.Contains("--separador")) return 0;
+
             if (args.Contains("--desinstalar"))
             {
                 Desinstalar();
