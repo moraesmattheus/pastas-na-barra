@@ -59,7 +59,6 @@ namespace PastasBarra
                 if (p0 != null) { try { Painel.Aquecer(p0); } catch { } }
             }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             IniciarVerificacaoAutomatica();
-            LimparAtualizacaoAntiga();
             _app.Run();
             _tray.Visible = false;
             _tray.Dispose();
@@ -68,15 +67,6 @@ namespace PastasBarra
         public static void Sair() { _app.Shutdown(); }
 
         // ---------- atualizacao automatica (OTA) ----------
-        static void LimparAtualizacaoAntiga()
-        {
-            Task.Run(() =>
-            {
-                try { File.Delete(Instalador.ExeInstalado + ".old"); } catch { }
-                try { File.Delete(Instalador.ExeInstalado + ".novo"); } catch { }
-            });
-        }
-
         // So verifica a internet se a opcao estiver ligada e este for o programa instalado.
         static void IniciarVerificacaoAutomatica()
         {
@@ -90,9 +80,16 @@ namespace PastasBarra
 
         static void VerificarAutomatico()
         {
-            if (!Repo.Dados.AtualizarAuto || !Instalador.RodandoInstalado()) return;
+            if (!Repo.Dados.AtualizarAuto) return;
             if ((DateTime.UtcNow - new DateTime(Repo.Dados.UltimaChecagem, DateTimeKind.Utc)).TotalHours < 5) return;
             VerificarAtualizacao(false);
+        }
+
+        static void AoClicarNoAviso(object remetente, EventArgs e) { AbrirPaginaDeDownload(); }
+
+        static void AbrirPaginaDeDownload()
+        {
+            try { Process.Start(new ProcessStartInfo(Atualizador.PaginaReleases) { UseShellExecute = true }); } catch { }
         }
 
         // manual = clicou em "Verificar atualizacoes agora" (mostra o resultado); automatico = so age se houver versao nova.
@@ -106,18 +103,20 @@ namespace PastasBarra
                 if (r.Erro != null) { if (manual) MessageBox.Show("N\u00e3o foi poss\u00edvel verificar atualiza\u00e7\u00f5es:\n" + r.Erro, "Atualiza\u00e7\u00f5es"); return; }
                 if (r.SemRelease) { if (manual) MessageBox.Show("Ainda n\u00e3o h\u00e1 nenhuma vers\u00e3o publicada para atualizar.", "Atualiza\u00e7\u00f5es"); return; }
                 if (!r.Disponivel) { if (manual) MessageBox.Show("Voc\u00ea j\u00e1 est\u00e1 na vers\u00e3o mais recente (" + Instalador.Versao + ").", "Atualiza\u00e7\u00f5es"); return; }
-                if (!Instalador.RodandoInstalado())
+                // So avisa e abre a pagina de download: o programa nao baixa nem troca o proprio .exe.
+                if (manual)
                 {
-                    if (manual) MessageBox.Show("H\u00e1 uma vers\u00e3o nova (" + r.Versao + "), mas esta c\u00f3pia n\u00e3o est\u00e1 instalada. Instale o programa para atualizar sozinho.", "Atualiza\u00e7\u00f5es");
-                    return;
+                    if (MessageBox.Show("Nova vers\u00e3o " + r.Versao + " dispon\u00edvel (voc\u00ea tem a " + Instalador.Versao + ").\nAbrir a p\u00e1gina de download?", "Atualiza\u00e7\u00f5es", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+                        AbrirPaginaDeDownload();
                 }
-                if (manual && MessageBox.Show("Nova vers\u00e3o " + r.Versao + " dispon\u00edvel (voc\u00ea tem a " + Instalador.Versao + ").\nAtualizar agora?", "Atualiza\u00e7\u00f5es", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
-                Task.Run(() => { string erro; return new Tuple<bool, string>(Atualizador.BaixarEAplicar(r, out erro), erro); }).ContinueWith(u =>
-                    _app.Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        if (!u.IsFaulted && u.Result.Item1) { _app.Shutdown(); return; }   // a copia nova ja foi aberta
-                        if (!u.IsFaulted && !u.Result.Item1 && manual) MessageBox.Show("N\u00e3o foi poss\u00edvel atualizar:\n" + u.Result.Item2, "Atualiza\u00e7\u00f5es");
-                    })));
+                else if (Repo.Dados.VersaoAvisada != r.Versao)
+                {
+                    Repo.Dados.VersaoAvisada = r.Versao;
+                    Repo.Salvar();
+                    _tray.BalloonTipClicked -= AoClicarNoAviso;
+                    _tray.BalloonTipClicked += AoClicarNoAviso;
+                    _tray.ShowBalloonTip(10000, "Pastas na barra", "Nova vers\u00e3o " + r.Versao + " dispon\u00edvel. Clique para baixar.", WF.ToolTipIcon.Info);
+                }
             })));
         }
 

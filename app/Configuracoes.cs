@@ -48,7 +48,7 @@ namespace PastasBarra
             var rodape = new StackPanel { Margin = new Thickness(0, 14, 0, 0) };
             var inicio = new CheckBox { Content = "Iniciar junto com o Windows", IsChecked = Shell.IniciarComWindows };
             inicio.Click += (s, e) => Shell.IniciarComWindows = inicio.IsChecked == true;
-            var auto = new CheckBox { Content = "Atualizar automaticamente (verifica o GitHub; baixa e confere o SHA-256)", IsChecked = Repo.Dados.AtualizarAuto, Margin = new Thickness(0, 6, 0, 0) };
+            var auto = new CheckBox { Content = "Avisar quando houver vers\u00e3o nova (consulta o GitHub; n\u00e3o baixa nada sozinho)", IsChecked = Repo.Dados.AtualizarAuto, Margin = new Thickness(0, 6, 0, 0) };
             auto.Click += (s, e) => { Repo.Dados.AtualizarAuto = auto.IsChecked == true; Repo.Salvar(); };
             var linhaVersao = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
             var verificar = new Button { Content = "Verificar atualiza\u00e7\u00f5es agora", Padding = new Thickness(12, 6, 12, 6) };

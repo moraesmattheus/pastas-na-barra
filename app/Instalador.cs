@@ -69,11 +69,8 @@ namespace PastasBarra
         }
 
         // ---------- desinstalar ----------
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        static extern bool MoveFileEx(string existente, string novo, int flags);
-
-        // Roda no proprio lugar (sem se copiar para a pasta temporaria): remove tudo que nao esta em uso e deixa o
-        // Windows apagar o ultimo arquivo (o proprio .exe) e a pasta no proximo reinicio.
+        // Roda no proprio lugar (sem se copiar para a pasta temporaria): remove tudo que nao esta em uso; o proprio
+        // .exe (em execucao) fica para o usuario apagar.
         public static void Desinstalar()
         {
             if (!RodandoInstalado())
@@ -98,9 +95,9 @@ namespace PastasBarra
             }
             catch { }
             if (apagarDados) { try { Directory.Delete(Repo.Raiz, true); } catch { } }
-            try { MoveFileEx(eu, null, 4); MoveFileEx(Pasta, null, 4); } catch { }   // 4 = apagar no proximo reinicio
 
-            MessageBox.Show("Pastas na barra foi removido (o último arquivo some ao reiniciar o computador).\n\nDesafixe os ícones das pastas da barra de tarefas (botão direito > Desafixar).", "Desinstalar");
+            MessageBox.Show("Pastas na barra foi removido.\n\nDesafixe os ícones das pastas da barra de tarefas (botão direito > Desafixar).\n\nSó este arquivo (o programa que está terminando) ficou na pasta de instalação; apague a pasta quando quiser.", "Desinstalar");
+            try { Process.Start("explorer.exe", "/select,\"" + eu + "\""); } catch { }
         }
 
         static void PedirParaSair()
@@ -141,7 +138,7 @@ namespace PastasBarra
                 TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 16), Foreground = Brushes.Gray
             });
             var inicio = new CheckBox { Content = "Abrir junto com o Windows (deixa o painel mais r\u00e1pido)", IsChecked = true, Margin = new Thickness(0, 0, 0, 6) };
-            var auto = new CheckBox { Content = "Atualizar automaticamente pelo GitHub (opcional; desligado por padr\u00e3o)", IsChecked = false, Margin = new Thickness(0, 0, 0, 14) };
+            var auto = new CheckBox { Content = "Avisar quando houver vers\u00e3o nova (consulta o GitHub; opcional, desligado por padr\u00e3o)", IsChecked = false, Margin = new Thickness(0, 0, 0, 14) };
             pl.Children.Add(inicio); pl.Children.Add(auto);
             var linha = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
             var so = new Button { Content = "Só executar", Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(0, 0, 8, 0) };

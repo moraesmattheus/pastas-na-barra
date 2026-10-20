@@ -17,12 +17,12 @@ Compile (veja abaixo) ou baixe o `PastasBarra.exe` e abra: ele pergunta se quer 
 - Configurações (ícone da bandeja): gerenciar pastas, fixar, iniciar com o Windows, atualizações.
 
 ## Privacidade
-O programa roda no seu computador: não coleta nem envia dados seus. A **única** conexão com a internet é a verificação de atualização no GitHub, e só acontece se você ligar "Atualizar automaticamente" (ou clicar em "Verificar atualizações agora"). Suas pastas ficam em `%APPDATA%\PastasBarra`.
+O programa roda no seu computador: não coleta nem envia dados seus. A **única** conexão com a internet é a leitura do número da última versão no GitHub, e só acontece se você ligar "Avisar quando houver versão nova" (ou clicar em "Verificar atualizações agora"). Suas pastas ficam em `%APPDATA%\PastasBarra`.
 
-## Atualizações (OTA)
-Em *Configurações* há "Atualizar automaticamente" (o instalador também pergunta). Com a opção ligada, a cada ~6 horas o programa consulta a última Release deste repositório; se houver versão nova, baixa o `PastasBarra.exe`, confere o SHA-256 contra o `PastasBarra.exe.sha256` da mesma Release, instala por cima e reabre. Só baixa de `github.com/moraesmattheus/pastas-na-barra/releases/download/`. Enquanto o `.exe` não for assinado digitalmente, o SHA-256 protege contra arquivo corrompido, mas não substitui a assinatura.
+## Avisos de atualização
+Em *Configurações* há "Avisar quando houver versão nova" (o instalador também pergunta; vem desligado). Com a opção ligada, a cada ~6 horas o programa lê o número da última Release deste repositório; se houver versão nova, mostra um aviso na bandeja e abre a página de download no navegador. **O programa não baixa nem troca o próprio `.exe`**: isso é o que antivírus tratam como malware, então a atualização 100% automática só deve voltar depois que o `.exe` estiver assinado digitalmente. Há também "Verificar atualizações agora".
 
-Para publicar uma versão: suba `Versao` em `app/Instalador.cs` e `app/Info.cs`, faça commit e crie a tag `vX.Y.Z` (`git tag v0.2.0 && git push origin v0.2.0`); o GitHub Actions compila e cria a Release com o `.exe` e o hash.
+Para publicar uma versão: suba `Versao` em `app/Instalador.cs` e `app/Info.cs`, faça commit e crie a tag `vX.Y.Z` (`git tag v0.2.0 && git push origin v0.2.0`); o GitHub Actions compila e cria a Release com o `.exe` e o hash. Para atualizar uma cópia instalada: baixe o novo `.exe`, abra e escolha "Atualizar".
 
 ## Compilar
 ```
@@ -41,7 +41,7 @@ A primeira versão, em PowerShell, está em [`prototipo/`](prototipo/LEIAME.md).
 ## Antivírus e confiança (leia antes de distribuir)
 Um `.exe` novo, sem assinatura digital, que fica na bandeja, inicia com o Windows e mexe na barra de tarefas pode ser marcado por antivírus como suspeito (o McAfee já bloqueou uma versão minúscula do lançador). Isso é falso positivo, mas só some de forma confiável com **assinatura digital + reputação**.
 
-Já feito no código, para não ter comportamento típico de malware: sem `.exe` auxiliar; sem PowerShell nem janelas ocultas; nada é baixado ou executado a partir da pasta temporária (a atualização grava na própria pasta de instalação, confere o SHA-256 e troca o arquivo por renomeação); o desinstalador roda no próprio lugar (não se copia para outro lugar); não lê títulos de janelas (o pontinho "aberto" usa só o nome do processo); não pede administrador; iniciar com o Windows e atualização automática são opções visíveis (a atualização vem desligada); lista de apps lida direto do shell do Windows; nome, empresa, versão, ícone e manifesto no `.exe`; build automatizado com SHA-256 (`dist\PastasBarra.exe.sha256`) e workflow do GitHub Actions.
+Já feito no código, para não ter comportamento típico de malware: sem `.exe` auxiliar; sem PowerShell nem janelas ocultas; **o programa não baixa, não executa nem renomeia nenhum `.exe`** (nem para se atualizar); o desinstalador roda no próprio lugar e não agenda exclusões no reinício; não lê títulos de janelas (o pontinho "aberto" usa só o nome do processo); não pede administrador; iniciar com o Windows e o aviso de versão são opções visíveis; lista de apps lida direto do shell do Windows; nome, empresa, versão, ícone e manifesto no `.exe`; build automatizado com SHA-256 (`dist\PastasBarra.exe.sha256`) e workflow do GitHub Actions.
 
 **Ainda assim não há garantia:** sem assinatura digital, qualquer antivírus pode marcar um programa novo. Se acontecer, não adicione exclusões por padrão: confira o hash (`PastasBarra.exe.sha256`), compare com a Release e envie o arquivo como falso positivo (Microsoft: https://www.microsoft.com/wdsi/filesubmission ; McAfee: pelo programa ou site deles).
 
