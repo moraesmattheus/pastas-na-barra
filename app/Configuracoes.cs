@@ -39,6 +39,8 @@ namespace PastasBarra
             botoes.Children.Add(Botao("Sugestões de pastas...", () => App.AbrirAssistente()));
             if (Instalador.RodandoInstalado())
                 botoes.Children.Add(Botao("Desinstalar...", () => System.Diagnostics.Process.Start(Instalador.ExeAtual, "--desinstalar")));
+            else
+                botoes.Children.Add(Botao("Instalar no computador...", InstalarAgora));
             meio.Children.Add(botoes);
             Grid.SetRow(meio, 1);
             g.Children.Add(meio);
@@ -77,6 +79,7 @@ namespace PastasBarra
         {
             var nome = Ui.PedirTexto(this, "Nome da nova pasta", "");
             if (nome == null) return;
+            if (!Repo.NomeDisponivel(nome, null)) { MessageBox.Show("J\u00e1 existe uma pasta com esse nome.", "Nova pasta"); return; }
             var p = Repo.Criar(nome);
             Repo.Salvar();
             Shell.AtualizarPasta(p);
@@ -89,6 +92,7 @@ namespace PastasBarra
             var p = Selecionada; if (p == null) return;
             var nome = Ui.PedirTexto(this, "Renomear pasta", p.Nome);
             if (nome == null || nome == p.Nome) return;
+            if (!Repo.NomeDisponivel(nome, p)) { MessageBox.Show("J\u00e1 existe uma pasta com esse nome.", "Renomear pasta"); return; }
             Shell.ApagarAtalho(p); p.Nome = nome;
             Repo.Salvar(); Shell.AtualizarPasta(p); Recarregar();
         }
@@ -108,6 +112,17 @@ namespace PastasBarra
             bool ligar = !alvo.All(x => x.MostrarNome);
             foreach (var x in alvo) { x.MostrarNome = ligar; Shell.AtualizarPasta(x); }
             Repo.Salvar();
+        }
+
+        // Quem escolheu "S\u00f3 executar" antes pode instalar depois por aqui.
+        void InstalarAgora()
+        {
+            Repo.Dados.ModoPortatil = false; Repo.Salvar();
+            var j = new InstalarJanela();
+            j.ShowDialog();
+            if (!j.Instalou) return;
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Instalador.ExeInstalado, "--aguardar") { UseShellExecute = false });
+            App.Sair();
         }
 
         void Fixar()

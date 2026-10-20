@@ -88,7 +88,7 @@ namespace PastasBarra
             Loaded += (s, e) =>
             {
                 Task.Run(() => Shell.ListarApps()).ContinueWith(t =>
-                    Dispatcher.BeginInvoke(new Action(() => Preencher(t.Result))));
+                    Dispatcher.BeginInvoke(new Action(() => Preencher(t.IsFaulted ? new List<StartApp>() : t.Result))));
             };
         }
 
@@ -142,6 +142,12 @@ namespace PastasBarra
                 return novas;
             }).ContinueWith(t => Dispatcher.BeginInvoke(new Action(() =>
             {
+                if (t.IsFaulted)
+                {
+                    _status.Text = "N\u00e3o foi poss\u00edvel criar as pastas. Tente de novo.";
+                    _criar.IsEnabled = true;
+                    return;
+                }
                 foreach (var p in t.Result) { Repo.Dados.Pastas.Add(p); Shell.AtualizarPasta(p); }
                 Repo.Dados.PrimeiraVezConcluida = true;
                 Repo.Salvar();
@@ -229,9 +235,10 @@ namespace PastasBarra
 
         void Atualizar()
         {
+            var ids = Shell.IdsFixados();
             foreach (var l in _linhas)
             {
-                bool fixada = File.Exists(Path.Combine(Shell.PastaFixados, Path.GetFileName(Shell.CaminhoAtalho(l.Item1))));
+                bool fixada = ids.Contains(l.Item1.Id);
                 l.Item2.Text = fixada ? "✓ fixada" : "arraste para a barra";
                 l.Item2.Foreground = fixada ? Brushes.SeaGreen : Brushes.Gray;
             }

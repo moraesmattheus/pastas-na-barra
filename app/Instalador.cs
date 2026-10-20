@@ -111,7 +111,7 @@ namespace PastasBarra
         {
             try
             {
-                using (var c = new NamedPipeClientStream(".", "PastasBarra.pipe", PipeDirection.Out))
+                using (var c = new NamedPipeClientStream(".", Inicio.NomePipe, PipeDirection.Out))
                 {
                     c.Connect(1500);
                     var w = new StreamWriter(c) { AutoFlush = true };

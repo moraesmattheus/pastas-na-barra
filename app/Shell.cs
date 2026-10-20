@@ -150,6 +150,68 @@ namespace PastasBarra
             return _apps;
         }
 
+        // ---------- itens soltos no painel (arquivo, atalho, pasta ou app do Menu Iniciar) ----------
+        [ComImport, Guid("b63ea76d-1f85-456f-a19c-48159efa858b"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IShellItemArray
+        {
+            [PreserveSig] int BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppvOut);
+            [PreserveSig] int GetPropertyStore(int flags, ref Guid riid, out IntPtr ppv);
+            [PreserveSig] int GetPropertyDescriptionList(IntPtr keyType, ref Guid riid, out IntPtr ppv);
+            [PreserveSig] int GetAttributes(int attribFlags, uint sfgaoMask, out uint psfgaoAttribs);
+            [PreserveSig] int GetCount(out uint pdwNumItems);
+            [PreserveSig] int GetItemAt(uint dwIndex, out IShellItem ppsi);
+            [PreserveSig] int EnumItems(out IntPtr ppenumShellItems);
+        }
+
+        [DllImport("shell32.dll", PreserveSig = false)]
+        static extern void SHCreateShellItemArrayFromDataObject(System.Runtime.InteropServices.ComTypes.IDataObject pdo, ref Guid riid,
+            [MarshalAs(UnmanagedType.Interface)] out IShellItemArray ppv);
+
+        // Converte o que foi solto em itens. Primeiro tenta a lista de arquivos; se nao houver (ex.: arrastar do Menu Iniciar),
+        // pergunta ao shell do Windows quais itens estao no pacote.
+        public static List<AppItem> ItensDoDrop(System.Windows.IDataObject dados)
+        {
+            var itens = new List<AppItem>();
+            var arquivos = dados.GetData(System.Windows.DataFormats.FileDrop) as string[];
+            if (arquivos != null)
+            {
+                foreach (var f in arquivos) itens.Add(NovoItemArquivo(f));
+                return itens;
+            }
+            try
+            {
+                var com = dados as System.Runtime.InteropServices.ComTypes.IDataObject;
+                if (com == null) return itens;
+                Guid iid = new Guid("b63ea76d-1f85-456f-a19c-48159efa858b");
+                IShellItemArray arr;
+                SHCreateShellItemArrayFromDataObject(com, ref iid, out arr);
+                uint n; arr.GetCount(out n);
+                for (uint i = 0; i < n; i++)
+                {
+                    IShellItem it;
+                    if (arr.GetItemAt(i, out it) != 0) continue;
+                    string nome = Nome(it, 0);               // nome de exibicao
+                    string abs = Nome(it, 0x80028000);       // SIGDN_DESKTOPABSOLUTEPARSING
+                    string rel = Nome(it, 0x80018001);       // SIGDN_PARENTRELATIVEPARSING
+                    if (!string.IsNullOrEmpty(abs) && (File.Exists(abs) || Directory.Exists(abs)))
+                        itens.Add(NovoItemArquivo(abs));
+                    else if (!string.IsNullOrEmpty(abs) && abs.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
+                        itens.Add(new AppItem { Nome = nome, Alvo = abs, Tipo = "shell", Icone = SalvarIcone(abs, nome) });
+                    else if (!string.IsNullOrEmpty(rel) && !string.IsNullOrEmpty(nome) && rel.IndexOf('!') > 0)
+                        itens.Add(NovoItem(new StartApp { Nome = nome, AppId = rel }));      // app da Loja (AppUserModelID)
+                    else
+                        Registrar("Drop nao reconhecido: nome=" + nome + " | abs=" + abs + " | rel=" + rel);
+                }
+            }
+            catch (Exception e) { Registrar("Drop falhou: " + e.Message); }
+            return itens;
+        }
+
+        static void Registrar(string texto)
+        {
+            try { File.AppendAllText(Path.Combine(Repo.Raiz, "erro.log"), DateTime.Now + " " + texto + Environment.NewLine); } catch { }
+        }
+
         public static AppItem NovoItem(StartApp a)
         {
             string alvo = "shell:AppsFolder\\" + a.AppId;
@@ -192,6 +254,16 @@ namespace PastasBarra
             _procs = l;
         }
 
+        // Titulos de janela costumam ser "Documento - Nome do app"; exigir isso evita falso positivo
+        // (ex.: uma aba de navegador com a palavra "Email" no titulo).
+        static bool TituloDoApp(string titulo, string nome)
+        {
+            if (string.IsNullOrEmpty(titulo)) return false;
+            var cmp = StringComparison.CurrentCultureIgnoreCase;
+            return string.Equals(titulo, nome, cmp)
+                || titulo.EndsWith(" - " + nome, cmp) || titulo.EndsWith(" \u2014 " + nome, cmp) || titulo.EndsWith(" \u2013 " + nome, cmp);
+        }
+
         public static bool Rodando(AppItem a)
         {
             string n = Norm(a.Nome);
@@ -200,7 +272,7 @@ namespace PastasBarra
             {
                 if (t.Item1 == n) return true;
                 if (n.Length >= 4 && t.Item1.Length >= 4 && (t.Item1.Contains(n) || n.Contains(t.Item1))) return true;
-                if (n.Length >= 4 && t.Item2.IndexOf(a.Nome, StringComparison.CurrentCultureIgnoreCase) >= 0) return true;
+                if (n.Length >= 4 && TituloDoApp(t.Item2, a.Nome)) return true;
             }
             return false;
         }
@@ -213,9 +285,7 @@ namespace PastasBarra
 
         public static string CaminhoAtalho(Pasta p)
         {
-            string nome = p.Nome;
-            foreach (char c in Path.GetInvalidFileNameChars()) nome = nome.Replace(c, '-');
-            return Path.Combine(Repo.Atalhos, nome + ".lnk");
+            return Path.Combine(Repo.Atalhos, Repo.NomeArquivo(p.Nome) + ".lnk");
         }
 
         // Desenha o mosaico 3x3 (e, se ligado, o nome embaixo) em um quadrado de t x t pixels.
@@ -228,7 +298,7 @@ namespace PastasBarra
                 g.InterpolationMode = InterpolationMode.HighQualityBicubic;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
                 bool nome = p.MostrarNome && t >= 24;
-                float s = nome ? t * 0.74f : t;                 // lado do mosaico
+                float s = nome ? t * 0.60f : t;                 // lado do mosaico (menor para sobrar espaco para o nome)
                 float x0 = (t - s) / 2f, y0 = nome ? t * 0.01f : 0f;
                 float m = s * 0.03f, w = s - 2 * m, r = s * 0.22f;
                 var path = new GraphicsPath();
@@ -247,14 +317,27 @@ namespace PastasBarra
                 }
                 if (nome)
                 {
+                    // O nome tem que ser legivel no icone pequeno da barra: fonte grande, e o texto encurta se nao couber.
                     float altura = t - (y0 + s);
-                    using (var fonte = new Font("Segoe UI Semibold", Math.Max(6f, t * 0.19f), FontStyle.Bold, GraphicsUnit.Pixel))
-                    using (var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap })
+                    float largura = t * 0.98f;
+                    float tam = t * 0.36f, minimo = Math.Max(7f, t * 0.24f);
+                    string texto = p.Nome;
+                    Font fonte = new Font("Segoe UI", tam, FontStyle.Bold, GraphicsUnit.Pixel);
+                    while (g.MeasureString(texto, fonte).Width > largura)
+                    {
+                        if (tam > minimo) { tam -= 0.5f; fonte.Dispose(); fonte = new Font("Segoe UI", tam, FontStyle.Bold, GraphicsUnit.Pixel); }
+                        else if (texto.Contains(" ")) texto = texto.Substring(0, texto.IndexOf(' '));   // so a primeira palavra
+                        else if (texto.Length > 1) texto = texto.Substring(0, texto.Length - 1);          // corta letras
+                        else break;
+                    }
+                    using (fonte)
+                    using (var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap })
                     {
                         var ret = new RectangleF(0, y0 + s, t, altura);
-                        var sombra = new RectangleF(ret.X + Math.Max(1, t / 128f), ret.Y + Math.Max(1, t / 128f), ret.Width, ret.Height);
-                        using (var bs = new SolidBrush(Color.FromArgb(200, 0, 0, 0))) g.DrawString(p.Nome, fonte, bs, sombra, fmt);
-                        g.DrawString(p.Nome, fonte, Brushes.White, ret, fmt);
+                        float d = Math.Max(1f, t / 64f);
+                        var sombra = new RectangleF(ret.X + d, ret.Y + d, ret.Width, ret.Height);
+                        using (var bs = new SolidBrush(Color.FromArgb(230, 0, 0, 0))) g.DrawString(texto, fonte, bs, sombra, fmt);
+                        g.DrawString(texto, fonte, Brushes.White, ret, fmt);
                     }
                 }
             }
@@ -263,7 +346,7 @@ namespace PastasBarra
 
         static string Assinatura(Pasta p)
         {
-            return p.Cor + "|" + p.MostrarNome + "|" + p.Nome + "|" + string.Join(",", p.Apps.Take(9).Select(a => a.Icone));
+            return "v2|" + p.Cor + "|" + p.MostrarNome + "|" + p.Nome + "|" + string.Join(",", p.Apps.Take(9).Select(a => a.Icone));
         }
 
         // Gera o .ico com varios tamanhos (a barra escolhe o mais nitido). Usa um nome novo a cada mudanca
@@ -304,26 +387,72 @@ namespace PastasBarra
             Repo.Salvar();
         }
 
-        // Cria/atualiza o atalho da pasta (e o icone). Se ja existir uma copia fixada na barra, atualiza o icone dela tambem.
+        // Cria/atualiza o atalho da pasta (e o icone) e tambem as copias dela fixadas na barra.
         public static string AtualizarPasta(Pasta p)
         {
             GerarIconePasta(p);
             string lnk = CaminhoAtalho(p);
             GravarAtalho(lnk, p);
-            string fixado = Path.Combine(PastaFixados, Path.GetFileName(lnk));
-            if (File.Exists(fixado)) GravarAtalho(fixado, p);
+            foreach (var f in FixadosDe(p)) GravarAtalho(f, p);
             return lnk;
         }
 
+        // So regrava se algo mudou (evita mexer na barra de tarefas toda vez que o programa inicia).
         static void GravarAtalho(string lnk, Pasta p)
         {
+            string alvo = Process.GetCurrentProcess().MainModule.FileName;
+            string args = "--abrir " + p.Id;
+            string ico = CaminhoIcone(p) + ",0";
             dynamic sh = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell"));
             dynamic a = sh.CreateShortcut(lnk);
-            a.TargetPath = Process.GetCurrentProcess().MainModule.FileName;
-            a.Arguments = "--abrir " + p.Id;
-            a.IconLocation = CaminhoIcone(p) + ",0";
+            if (File.Exists(lnk)
+                && string.Equals((string)a.TargetPath, alvo, StringComparison.OrdinalIgnoreCase)
+                && (string)a.Arguments == args
+                && string.Equals((string)a.IconLocation, ico, StringComparison.OrdinalIgnoreCase)) return;
+            a.TargetPath = alvo;
+            a.Arguments = args;
+            a.IconLocation = ico;
             a.Description = "Pasta " + p.Nome;
             a.Save();
+        }
+
+        // Copias desta pasta fixadas na barra: achadas pelo ID nos argumentos (nao pelo nome do arquivo,
+        // que nao muda quando a pasta e renomeada). Tambem reconhece as do prototipo antigo (abrir.vbs "Nome").
+        static List<string> FixadosDe(Pasta p)
+        {
+            var r = new List<string>();
+            try
+            {
+                if (!Directory.Exists(PastaFixados)) return r;
+                dynamic sh = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell"));
+                foreach (var f in Directory.GetFiles(PastaFixados, "*.lnk"))
+                {
+                    string args;
+                    try { args = ((string)sh.CreateShortcut(f).Arguments ?? "").Trim(); } catch { continue; }
+                    if (args == "--abrir " + p.Id || (args.Contains("abrir.vbs") && args.EndsWith("\"" + p.Nome + "\""))) r.Add(f);
+                }
+            }
+            catch { }
+            return r;
+        }
+
+        // IDs das pastas que ja estao fixadas na barra (uma varredura so).
+        public static HashSet<string> IdsFixados()
+        {
+            var ids = new HashSet<string>();
+            try
+            {
+                if (!Directory.Exists(PastaFixados)) return ids;
+                dynamic sh = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell"));
+                foreach (var f in Directory.GetFiles(PastaFixados, "*.lnk"))
+                {
+                    string args;
+                    try { args = ((string)sh.CreateShortcut(f).Arguments ?? "").Trim(); } catch { continue; }
+                    if (args.StartsWith("--abrir ")) ids.Add(args.Substring(8));
+                }
+            }
+            catch { }
+            return ids;
         }
 
         public static readonly string PastaFixados = Path.Combine(

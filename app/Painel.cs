@@ -38,9 +38,17 @@ namespace PastasBarra
         {
             // clicar de novo no icone com o painel aberto = fechar (ele ja fechou ao perder o foco)
             if (_fechouId == p.Id && (DateTime.Now - _fechouEm).TotalMilliseconds < 700) { _fechouId = ""; return; }
-            if (_aberto != null) _aberto.Close();
+            if (_aberto != null && _aberto._pasta == p) { _aberto.FecharSuave(); return; }   // clicar de novo no icone fecha
+            if (_aberto != null) { try { _aberto.Close(); } catch (InvalidOperationException) { } }
             _aberto = new Painel(p);
             _aberto.Show();
+        }
+
+        // Mostra o painel da pasta; se ja estiver aberto, so atualiza o conteudo (nao fecha).
+        public static void MostrarOuAtualizar(Pasta p)
+        {
+            if (_aberto != null && _aberto._pasta == p) { _aberto.Montar(); return; }
+            Abrir(p);
         }
 
         // Cria e fecha um painel fora da tela no inicio, para o primeiro clique de verdade ja ser instantaneo.
@@ -100,22 +108,16 @@ namespace PastasBarra
             moldura.Opacity = 0;
             moldura.RenderTransform = _slide = new TranslateTransform(0, 14);
 
-            Drop += (s, e) =>
-            {
-                var arquivos = e.Data.GetData(DataFormats.FileDrop) as string[];
-                if (arquivos == null) return;
-                foreach (var f in arquivos)
-                {
-                    if (_pasta.Apps.Any(a => a.Alvo == f)) continue;
-                    _pasta.Apps.Add(Shell.NovoItemArquivo(f));
-                }
-                Salvar();
-            };
+            DragEnter += (s, e) => { if (!e.Data.GetDataPresent(FormatoApp)) { e.Effects = DragDropEffects.Copy; _moldura.BorderBrush = Ui.Pincel("#CCFFFFFF"); e.Handled = true; } };
+            DragOver += (s, e) => { if (!e.Data.GetDataPresent(FormatoApp)) { e.Effects = DragDropEffects.Copy; e.Handled = true; } };
+            DragLeave += (s, e) => _moldura.BorderBrush = Ui.Pincel("#33FFFFFF");
+            Drop += (s, e) => Soltar(e);
             ContentRendered += (s, e) => { Reposicionar(); Activate(); Entrar(); };
             SizeChanged += (s, e) => Reposicionar();
             Activated += (s, e) => _ativou = true;
             Closing += (s, e) => _fechando = true;
-            Deactivated += (s, e) => { if (_ativou && !_ocupado && !_fechando) FecharSuave(); };
+            // no modo de edicao o painel fica aberto (permite arrastar apps de outras janelas para ele)
+            Deactivated += (s, e) => { if (_ativou && !_ocupado && !_fechando && !_editando) FecharSuave(); };
             KeyDown += (s, e) => { if (e.Key == Key.Escape) { if (_editando) { _editando = false; Montar(); } else FecharSuave(); } };
             Closed += (s, e) => { _fechouEm = DateTime.Now; _fechouId = _pasta.Id; if (_aberto == this) _aberto = null; };
             Montar();
@@ -123,6 +125,25 @@ namespace PastasBarra
             // pontinhos de "app aberto": calcula em segundo plano para nao atrasar a abertura
             Task.Run(() => Shell.AtualizarProcessos()).ContinueWith(t =>
                 Dispatcher.BeginInvoke(new Action(AtualizarPontos)));
+        }
+
+        // Algo foi solto no painel (arquivo, atalho, pasta, app do Menu Iniciar).
+        void Soltar(DragEventArgs e)
+        {
+            _moldura.BorderBrush = Ui.Pincel("#33FFFFFF");
+            if (e.Data.GetDataPresent(FormatoApp)) return;
+            int novos = 0;
+            foreach (var item in Shell.ItensDoDrop(e.Data))
+            {
+                if (_pasta.Apps.Any(a => a.Alvo == item.Alvo)) continue;
+                _pasta.Apps.Add(item); novos++;
+            }
+            if (novos > 0) { Salvar(); return; }
+            _rodape.Content = new TextBlock
+            {
+                Text = "N\u00e3o consegui adicionar isso. Use o bot\u00e3o + para escolher da lista.",
+                Foreground = Ui.Pincel("#FFB4B6"), FontSize = 10.5, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 10, 0, 0)
+            };
         }
 
         // ---------- animacao: entra subindo e aparecendo; sai com fade rapido ----------
@@ -213,7 +234,7 @@ namespace PastasBarra
         {
             return new TextBlock
             {
-                Text = "Arraste apps para cá · ⚙ para personalizar",
+                Text = "⚙ para personalizar e arrastar apps para cá",
                 Foreground = Ui.Pincel("#99FFFFFF"), FontSize = 10.5,
                 HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 10, 0, 0)
             };
@@ -246,7 +267,7 @@ namespace PastasBarra
             pl.Children.Add(cores); pl.Children.Add(acoes); pl.Children.Add(acoes2);
             pl.Children.Add(new TextBlock
             {
-                Text = "Arraste os apps para reordenar · ✕ remove · ⚙ conclui",
+                Text = "Solte aqui arquivos, atalhos ou apps para adicionar · arraste os ícones para reordenar · ✕ remove · ⚙ conclui",
                 Foreground = Ui.Pincel("#99FFFFFF"), FontSize = 10.5, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 10, 0, 0)
             });
             return pl;
@@ -382,6 +403,7 @@ namespace PastasBarra
             string nome = null;
             Dialogo(() => nome = Ui.PedirTexto(this, "Renomear pasta", _pasta.Nome));
             if (nome == null || nome == _pasta.Nome) return;
+            if (!Repo.NomeDisponivel(nome, _pasta)) { Dialogo(() => MessageBox.Show("J\u00e1 existe uma pasta com esse nome.", "Renomear pasta")); return; }
             Shell.ApagarAtalho(_pasta);
             _pasta.Nome = nome;
             Salvar();
@@ -401,6 +423,7 @@ namespace PastasBarra
             string nome = null;
             Dialogo(() => nome = Ui.PedirTexto(this, "Nome da nova pasta", ""));
             if (nome == null) return;
+            if (!Repo.NomeDisponivel(nome, null)) { Dialogo(() => MessageBox.Show("J\u00e1 existe uma pasta com esse nome.", "Nova pasta")); return; }
             var p = Repo.Criar(nome);
             Repo.Salvar();
             Shell.AtualizarPasta(p);
@@ -420,20 +443,28 @@ namespace PastasBarra
             FecharSuave();
         }
 
-        // ---------- posicao: acima da barra, centralizado onde o mouse clicou ----------
+        // ---------- posicao: junto da barra de tarefas (embaixo, em cima ou nas laterais), perto de onde o mouse clicou ----------
         void Reposicionar()
         {
             if (!IsLoaded) return;
             var src = PresentationSource.FromVisual(this);
             if (src == null || src.CompositionTarget == null) return;
             var m = src.CompositionTarget.TransformFromDevice;
-            var area = WF.Screen.FromPoint(_cursor).WorkingArea;
+            var tela = WF.Screen.FromPoint(_cursor);
+            var area = tela.WorkingArea; var limites = tela.Bounds;
             var tl = m.Transform(new Point(area.Left, area.Top));
             var br = m.Transform(new Point(area.Right, area.Bottom));
             var cur = m.Transform(new Point(_cursor.X, _cursor.Y));
-            double x = cur.X - ActualWidth / 2;
-            Left = Math.Max(tl.X, Math.Min(br.X - ActualWidth, x));
-            Top = br.Y - ActualHeight;
+            double w = ActualWidth, h = ActualHeight;
+            Func<double, double, double, double> limitar = (v, min, max) => Math.Max(min, Math.Min(max, v));
+            if (area.Left > limites.Left)          // barra na esquerda
+            { Left = tl.X; Top = limitar(cur.Y - h / 2, tl.Y, br.Y - h); }
+            else if (area.Right < limites.Right)   // barra na direita
+            { Left = br.X - w; Top = limitar(cur.Y - h / 2, tl.Y, br.Y - h); }
+            else if (area.Top > limites.Top)       // barra em cima
+            { Left = limitar(cur.X - w / 2, tl.X, br.X - w); Top = tl.Y; }
+            else                                   // barra embaixo (padrao)
+            { Left = limitar(cur.X - w / 2, tl.X, br.X - w); Top = br.Y - h; }
         }
     }
 }

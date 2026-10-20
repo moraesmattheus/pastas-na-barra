@@ -55,7 +55,12 @@ namespace PastasBarra
                     MigrarCores();
                 }
             }
-            catch { Dados = new Dados(); }
+            catch
+            {
+                // arquivo corrompido: guarda uma copia antes de comecar vazio (para nao perder nada no proximo salvamento)
+                try { File.Copy(Arq, Arq + ".corrompido-" + DateTime.Now.ToString("yyyyMMddHHmmss")); } catch { }
+                Dados = new Dados();
+            }
         }
 
         // Cores antigas (muito escuras, quase iguais) viram a paleta vibrante atual.
@@ -89,13 +94,31 @@ namespace PastasBarra
         {
             Directory.CreateDirectory(Raiz);
             var js = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
-            File.WriteAllText(Arq, js.Serialize(Dados));
+            // grava em arquivo temporario e troca: uma queda no meio da escrita nao corrompe os dados
+            string tmp = Arq + ".tmp";
+            File.WriteAllText(tmp, js.Serialize(Dados));
+            if (File.Exists(Arq)) File.Replace(tmp, Arq, null);
+            else File.Move(tmp, Arq);
         }
 
         public static Pasta Achar(string idOuNome)
         {
             return Dados.Pastas.FirstOrDefault(p => string.Equals(p.Id, idOuNome, StringComparison.OrdinalIgnoreCase))
                 ?? Dados.Pastas.FirstOrDefault(p => string.Equals(p.Nome, idOuNome, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Nome seguro para arquivo (o atalho da pasta tem o nome dela).
+        public static string NomeArquivo(string nome)
+        {
+            foreach (char c in Path.GetInvalidFileNameChars()) nome = nome.Replace(c, '-');
+            return nome.Trim().TrimEnd('.');
+        }
+
+        // Duas pastas nao podem ter o mesmo nome (o atalho de cada uma e um arquivo com esse nome).
+        public static bool NomeDisponivel(string nome, Pasta ignorar)
+        {
+            string novo = NomeArquivo(nome);
+            return !Dados.Pastas.Any(x => x != ignorar && string.Equals(NomeArquivo(x.Nome), novo, StringComparison.OrdinalIgnoreCase));
         }
 
         public static Pasta Criar(string nome)

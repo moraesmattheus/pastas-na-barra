@@ -14,13 +14,13 @@ namespace PastasBarra
 {
     public static class App
     {
-        const string NomePipe = "PastasBarra.pipe";
+        static string NomePipe { get { return Inicio.NomePipe; } }
         static Application _app;
         static WF.NotifyIcon _tray;
         static Window _config, _assistente, _fixar;
 
         // Chamado por Inicio.Main depois de confirmar que esta e a instancia principal.
-        public static void Executar(string abrir, bool bandeja)
+        public static void Executar(string abrir, bool bandeja, string[] soltos)
         {
             Repo.Carregar();
             _app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
@@ -48,7 +48,9 @@ namespace PastasBarra
                         return;
                     }
                 }
-                IniciarNormal(abrir, bandeja);
+                bool temSoltos = abrir != null && soltos != null && soltos.Length > 0;
+                IniciarNormal(temSoltos ? null : abrir, bandeja || temSoltos);
+                if (temSoltos) AdicionarArquivos(abrir, soltos);
             }));
             // pre-aquece o painel para o primeiro clique ser instantaneo
             _app.Dispatcher.BeginInvoke(new Action(() =>
@@ -59,6 +61,24 @@ namespace PastasBarra
             _app.Run();
             _tray.Visible = false;
             _tray.Dispose();
+        }
+
+        public static void Sair() { _app.Shutdown(); }
+
+        // Arquivos/atalhos soltos em cima do icone da pasta na barra de tarefas entram na pasta (em vez de serem fixados soltos).
+        static void AdicionarArquivos(string idOuNome, IEnumerable<string> caminhos)
+        {
+            var p = Repo.Achar(idOuNome);
+            if (p == null) return;
+            foreach (var c in caminhos)
+            {
+                if (!File.Exists(c) && !Directory.Exists(c)) continue;
+                if (p.Apps.Any(a => string.Equals(a.Alvo, c, StringComparison.OrdinalIgnoreCase))) continue;
+                p.Apps.Add(Shell.NovoItemArquivo(c));
+            }
+            Repo.Salvar();
+            Shell.AtualizarPasta(p);
+            Painel.MostrarOuAtualizar(p);
         }
 
         static void IniciarNormal(string abrir, bool bandeja)
@@ -128,6 +148,11 @@ namespace PastasBarra
                         {
                             if (linha == "sair") _app.Shutdown();
                             else if (linha.StartsWith("abrir|")) AbrirPasta(linha.Substring(6));
+                            else if (linha.StartsWith("adicionar|"))
+                            {
+                                var partes = linha.Split('|');
+                                AdicionarArquivos(partes[1], partes.Skip(2));
+                            }
                             else AbrirConfiguracoes();
                         }));
                     }

@@ -3,7 +3,7 @@
 Pastas de apps na barra de tarefas do Windows 11, como no celular. A barra nativa não suporta pastas, então cada pasta é um **atalho fixado na barra** com ícone em mosaico (3x3) que abre um painel acima dela. Um pequeno programa na bandeja cuida de tudo.
 
 ## Instalar
-Baixe `PastasBarra.exe` e abra: ele pergunta se quer instalar (sem administrador, em `%LOCALAPPDATA%\Programs\PastasBarra`), cria o atalho no Menu Iniciar e aparece em *Aplicativos instalados* para desinstalar.
+Compile (veja abaixo) ou baixe o `PastasBarra.exe` e abra: ele pergunta se quer instalar (sem administrador, em `%LOCALAPPDATA%\Programs\PastasBarra`), cria o atalho no Menu Iniciar e aparece em *Aplicativos instalados* para desinstalar.
 
 ## Como funciona
 1. Na primeira abertura, um assistente detecta seus apps e sugere pastas (IA, Redes Sociais, Jogos, Dev...). Você marca o que quer.
@@ -14,6 +14,9 @@ Baixe `PastasBarra.exe` e abra: ele pergunta se quer instalar (sem administrador
 - Arrastar app para dentro do painel, **+** para escolher da lista, botão direito para mover/remover.
 - Engrenagem ⚙ no painel: modo de edição com ✕, arrastar para reordenar, 8 cores, renomear, nova pasta, excluir e **nome no ícone** (mostra o nome da pasta embaixo do mosaico).
 - Configurações (ícone da bandeja): gerenciar pastas, fixar, iniciar com o Windows.
+
+## Privacidade
+O programa roda só no seu computador: não coleta, não envia dados e não usa internet. Suas pastas ficam em `%APPDATA%\PastasBarra`.
 
 ## Compilar
 ```
@@ -27,12 +30,12 @@ Gera `dist\PastasBarra.exe` (precisa só do Visual Studio Build Tools ou do .NET
 - Se recompilar o `.exe` com os ícones fixados, a barra pode mostrar ícones em branco até reiniciar o Explorer.
 
 ## Protótipo
-`painel.ps1`, `lib.psm1`, `instalar.ps1` e `abrir.vbs` são o protótipo em PowerShell que originou o app.
+A primeira versão, em PowerShell, está em [`prototipo/`](prototipo/LEIAME.md).
 
 ## Antivírus e confiança (leia antes de distribuir)
 Um `.exe` novo, sem assinatura digital, que fica na bandeja, inicia com o Windows e mexe na barra de tarefas pode ser marcado por antivírus como suspeito (o McAfee já bloqueou uma versão minúscula do lançador). Isso é falso positivo, mas só some de forma confiável com **assinatura digital + reputação**.
 
-Já feito no código: sem `.exe` auxiliar, sem PowerShell escondido (a lista de apps vem do shell do Windows), sem pedir administrador, instalação por usuário, nome/empresa/versão/ícone/manifesto, build reprodutível pelo `build.ps1` com SHA-256 (`dist\PastasBarra.exe.sha256`) e workflow do GitHub Actions (`.github/workflows/build.yml`, ainda não testado na nuvem).
+Já feito no código: sem `.exe` auxiliar, sem PowerShell escondido (a lista de apps vem do shell do Windows), sem pedir administrador, instalação por usuário, nome/empresa/versão/ícone/manifesto, build automatizado pelo `build.ps1` com SHA-256 (`dist\PastasBarra.exe.sha256`) e workflow do GitHub Actions (`.github/workflows/build.yml`, compila na nuvem do GitHub).
 
 Caminhos para assinar (decisão do autor):
 1. **Projeto aberto + SignPath Foundation** (gratuito para código aberto; exige licença aprovada pela OSI, repositório público e build automatizado). É o caminho mais barato. Verifique os critérios atuais em signpath.org.
