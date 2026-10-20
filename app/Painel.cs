@@ -82,13 +82,21 @@ namespace PastasBarra
 
             var moldura = _moldura = new Border
             {
-                CornerRadius = new CornerRadius(18),
+                CornerRadius = Ui.CantosPainel,
                 Padding = new Thickness(16),
                 Margin = new Thickness(10),
                 Background = Ui.FundoPainel(p.Cor),
-                BorderBrush = Ui.CorBorda,
+                BorderBrush = Ui.BordaPainel(),
                 BorderThickness = new Thickness(1),
-                Effect = new DropShadowEffect { BlurRadius = 26, ShadowDepth = 5, Opacity = 0.5, Color = Colors.Black }
+                Effect = Ui.SombraProfundidade
+            };
+
+            SourceInitialized += (s, e) =>
+            {
+                if (string.Equals(Repo.Dados.EstiloVisual, "Vidro", StringComparison.OrdinalIgnoreCase))
+                {
+                    Ui.AplicarAcrilicoNativo(this, _pasta.Cor);
+                }
             };
 
             // cabecalho: titulo no centro + engrenagem
@@ -214,8 +222,10 @@ namespace PastasBarra
                 _titulo.Text = "🔍 " + _filtro;
             }
             _titulo.Foreground = Ui.CorTexto;
+            _moldura.CornerRadius = Ui.CantosPainel;
             _moldura.Background = Ui.FundoPainel(_pasta.Cor);
-            _moldura.BorderBrush = Ui.CorBorda;
+            _moldura.BorderBrush = Ui.BordaPainel();
+            _moldura.Effect = Ui.SombraProfundidade;
             _grade.Children.Clear();
             _pontos.Clear();
 
@@ -379,7 +389,8 @@ namespace PastasBarra
             var celula = new Border
             {
                 Width = 92, Padding = new Thickness(4, 8, 4, 6), CornerRadius = new CornerRadius(12),
-                Background = Brushes.Transparent, Cursor = Cursors.Hand
+                Background = Brushes.Transparent, BorderThickness = new Thickness(1), BorderBrush = Brushes.Transparent,
+                Cursor = Cursors.Hand
             };
             var col = new StackPanel();
             col.Children.Add(icone);
@@ -391,9 +402,19 @@ namespace PastasBarra
             });
             col.Children.Add(ponto ?? new Ellipse { Width = 5, Height = 5, Margin = new Thickness(0, 4, 0, 0), Opacity = 0 });
             celula.Child = col;
-            var hover = Ui.CorCardHover;
-            celula.MouseEnter += (s, e) => celula.Background = hover;
-            celula.MouseLeave += (s, e) => celula.Background = Brushes.Transparent;
+
+            var hoverBg = Ui.CorCardHover;
+            var hoverBorda = Ui.Pincel(Ui.TemaEscuro ? "#30FFFFFF" : "#18000000");
+            celula.MouseEnter += (s, e) =>
+            {
+                celula.Background = hoverBg;
+                if (Repo.Dados.BiselVidro) celula.BorderBrush = hoverBorda;
+            };
+            celula.MouseLeave += (s, e) =>
+            {
+                celula.Background = Brushes.Transparent;
+                celula.BorderBrush = Brushes.Transparent;
+            };
             return celula;
         }
 

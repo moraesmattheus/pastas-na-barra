@@ -33,7 +33,11 @@ namespace PastasBarra
         public bool ModoPortatil;
         public bool AtualizarAuto;      // atualizacao automatica (OTA) ligada
         public long UltimaChecagem;
-        public string VersaoAvisada;    // ultima versao ja avisada (para nao repetir o aviso)     // ticks (UTC) da ultima verificacao
+        public string VersaoAvisada;    // ultima versao ja avisada (para nao repetir o aviso)
+        public string EstiloVisual = "Vidro";   // "Vidro" | "Solido"
+        public int OpacidadeVidro = 85;         // 70 a 100
+        public bool BiselVidro = true;          // borda reflexiva com efeito bisel
+        public int CantosArredondados = 18;     // 12, 18, 24
         public List<Pasta> Pastas = new List<Pasta>();
     }
 
@@ -56,6 +60,9 @@ namespace PastasBarra
                 if (File.Exists(Arq))
                 {
                     Dados = new JavaScriptSerializer().Deserialize<Dados>(File.ReadAllText(Arq)) ?? new Dados();
+                    if (Dados.OpacidadeVidro < 50 || Dados.OpacidadeVidro > 100) Dados.OpacidadeVidro = 85;
+                    if (Dados.CantosArredondados <= 0) Dados.CantosArredondados = 18;
+                    if (string.IsNullOrEmpty(Dados.EstiloVisual)) Dados.EstiloVisual = "Vidro";
                     MigrarCores();
                 }
             }

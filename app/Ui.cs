@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -49,25 +50,161 @@ namespace PastasBarra
         public static SolidColorBrush CorBorda { get { return Pincel(TemaEscuro ? "#24FFFFFF" : "#1E000000"); } }
         public static SolidColorBrush CorDestaque { get { return Pincel("#3B82F6"); } }
 
-        // Fundo do painel popup (escurecido suave na cor da pasta)
+        // Cantos arredondados configuraveis (12, 18, 24 px)
+        public static CornerRadius CantosPainel
+        {
+            get
+            {
+                int r = Repo.Dados.CantosArredondados;
+                if (r <= 0) r = 18;
+                return new CornerRadius(r);
+            }
+        }
+
+        // Borda com bisel de luz (gradiente reflexivo simulando vidro lapidado)
+        public static Brush BordaPainel()
+        {
+            if (!Repo.Dados.BiselVidro) return CorBorda;
+
+            var lg = new LinearGradientBrush
+            {
+                StartPoint = new Point(0, 0),
+                EndPoint = new Point(1, 1)
+            };
+            if (TemaEscuro)
+            {
+                lg.GradientStops.Add(new GradientStop(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF), 0.0));
+                lg.GradientStops.Add(new GradientStop(Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF), 0.5));
+                lg.GradientStops.Add(new GradientStop(Color.FromArgb(0x12, 0x00, 0x00, 0x00), 1.0));
+            }
+            else
+            {
+                lg.GradientStops.Add(new GradientStop(Color.FromArgb(0x80, 0xFF, 0xFF, 0xFF), 0.0));
+                lg.GradientStops.Add(new GradientStop(Color.FromArgb(0x35, 0xFF, 0xFF, 0xFF), 0.5));
+                lg.GradientStops.Add(new GradientStop(Color.FromArgb(0x18, 0x00, 0x00, 0x00), 1.0));
+            }
+            lg.Freeze();
+            return lg;
+        }
+
+        // Sombra suave de profundidade com aceleracao direta por hardware
+        public static DropShadowEffect SombraProfundidade
+        {
+            get
+            {
+                return new DropShadowEffect
+                {
+                    BlurRadius = 34,
+                    ShadowDepth = 6,
+                    Opacity = TemaEscuro ? 0.45 : 0.22,
+                    Color = Colors.Black,
+                    RenderingBias = RenderingBias.Performance
+                };
+            }
+        }
+
+        // Fundo do painel popup (adaptado a opacidade do vidro e tema)
         public static SolidColorBrush FundoPainel(string hex)
         {
             Color c;
             try { c = (Color)ColorConverter.ConvertFromString(hex); } catch { c = Color.FromRgb(71, 85, 105); }
+
+            bool solido = string.Equals(Repo.Dados.EstiloVisual, "Solido", StringComparison.OrdinalIgnoreCase);
+            int opacidade = solido ? 100 : Repo.Dados.OpacidadeVidro;
+            if (opacidade < 50 || opacidade > 100) opacidade = 85;
+
+            byte alpha = (byte)(opacidade * 255 / 100);
+
             if (TemaEscuro)
             {
-                Func<byte, byte, byte> mistura = (a, b) => (byte)(a * 0.28 + b * 0.72);
-                var br = new SolidColorBrush(Color.FromArgb(0xF2, mistura(c.R, 0x14), mistura(c.G, 0x16), mistura(c.B, 0x22)));
+                Func<byte, byte, byte> mistura = (a, b) => (byte)(a * 0.26 + b * 0.74);
+                var br = new SolidColorBrush(Color.FromArgb(alpha, mistura(c.R, 0x12), mistura(c.G, 0x14), mistura(c.B, 0x1E)));
                 br.Freeze();
                 return br;
             }
             else
             {
                 Func<byte, byte, byte> mistura = (a, b) => (byte)(a * 0.12 + b * 0.88);
-                var br = new SolidColorBrush(Color.FromArgb(0xF6, mistura(c.R, 0xF8), mistura(c.G, 0xFA), mistura(c.B, 0xFC)));
+                var br = new SolidColorBrush(Color.FromArgb(alpha, mistura(c.R, 0xF8), mistura(c.G, 0xFA), mistura(c.B, 0xFC)));
                 br.Freeze();
                 return br;
             }
+        }
+
+        // ---------- Efeito Vidro Acrilico Nativo via DWM (GPU-accelerated, 0% CPU) ----------
+        enum AccentState
+        {
+            ACCENT_DISABLED = 0,
+            ACCENT_ENABLE_GRADIENT = 1,
+            ACCENT_ENABLE_TRANSPARENTGRADIENT = 2,
+            ACCENT_ENABLE_BLURBEHIND = 3,
+            ACCENT_ENABLE_ACRYLICBLURBEHIND = 4
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct AccentPolicy
+        {
+            public AccentState AccentState;
+            public int AccentFlags;
+            public int GradientColor;
+            public int AnimationId;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct WindowCompositionAttributeData
+        {
+            public int Attribute;
+            public IntPtr Data;
+            public int SizeOfData;
+        }
+
+        [DllImport("user32.dll")]
+        static extern int SetWindowCompositionAttribute(IntPtr hwnd, ref WindowCompositionAttributeData data);
+
+        public static void AplicarAcrilicoNativo(Window window, string corHex = null)
+        {
+            try
+            {
+                var handle = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+                if (handle == IntPtr.Zero) return;
+
+                int corArgb = 0;
+                if (!string.IsNullOrEmpty(corHex))
+                {
+                    try
+                    {
+                        var c = (Color)ColorConverter.ConvertFromString(corHex);
+                        corArgb = (0x01 << 24) | (c.B << 16) | (c.G << 8) | c.R;
+                    }
+                    catch { }
+                }
+
+                var policy = new AccentPolicy
+                {
+                    AccentState = AccentState.ACCENT_ENABLE_ACRYLICBLURBEHIND,
+                    AccentFlags = 2,
+                    GradientColor = corArgb
+                };
+
+                int size = Marshal.SizeOf(policy);
+                IntPtr policyPtr = Marshal.AllocHGlobal(size);
+                try
+                {
+                    Marshal.StructureToPtr(policy, policyPtr, false);
+                    var data = new WindowCompositionAttributeData
+                    {
+                        Attribute = 19, // WCA_ACCENT_POLICY
+                        Data = policyPtr,
+                        SizeOfData = size
+                    };
+                    SetWindowCompositionAttribute(handle, ref data);
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(policyPtr);
+                }
+            }
+            catch { }
         }
 
         public static SolidColorBrush Pincel(string hex)
