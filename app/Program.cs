@@ -101,23 +101,27 @@ namespace PastasBarra
 
         static void AtualizarAgora(InfoAtualizacao info)
         {
-            var aguarde = new Window
+            Grid corpo;
+            var aguarde = Ui.CriarJanelaModerna(null, "Atualizando Pastas na barra", 360, double.NaN, out corpo);
+            var pl = new StackPanel { Margin = new Thickness(10) };
+            pl.Children.Add(new TextBlock
             {
-                Title = "Pastas na barra",
-                Width = 340, Height = 130,
-                WindowStartupLocation = WindowStartupLocation.CenterScreen,
-                ResizeMode = ResizeMode.NoResize,
-                WindowStyle = WindowStyle.ToolWindow,
-                Background = Ui.Pincel("#1F2230"),
-                Content = new TextBlock
-                {
-                    Text = "Baixando atualização " + info.Versao + "...\nPor favor, aguarde alguns instantes.",
-                    Foreground = System.Windows.Media.Brushes.White,
-                    TextAlignment = TextAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(16)
-                }
-            };
+                Text = "Baixando atualização " + info.Versao + "...",
+                FontSize = 14,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Ui.CorTexto,
+                TextAlignment = TextAlignment.Center
+            });
+            pl.Children.Add(new TextBlock
+            {
+                Text = "Por favor, aguarde alguns instantes enquanto o aplicativo é atualizado.",
+                FontSize = 12,
+                Foreground = Ui.CorSubtexto,
+                TextAlignment = TextAlignment.Center,
+                Margin = new Thickness(0, 8, 0, 0),
+                TextWrapping = TextWrapping.Wrap
+            });
+            corpo.Children.Add(pl);
             aguarde.Show();
             Task.Run(() => Atualizador.BaixarEAplicar(info)).ContinueWith(t => _app.Dispatcher.BeginInvoke(new Action(() =>
             {

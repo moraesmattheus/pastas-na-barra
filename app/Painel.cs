@@ -36,6 +36,7 @@ namespace PastasBarra
         string _snapshot;      // copia da pasta ao entrar no modo de edicao (para descartar)
         bool _alterado;        // ha mudancas ainda nao salvas
         TranslateTransform _slide;
+        string _filtro = "";   // busca rapida ao digitar letras
 
         public static void Abrir(Pasta p)
         {
@@ -84,20 +85,20 @@ namespace PastasBarra
                 CornerRadius = new CornerRadius(18),
                 Padding = new Thickness(16),
                 Margin = new Thickness(10),
-                Background = Ui.Pincel("#EE1F2230"),
-                BorderBrush = Ui.Pincel("#33FFFFFF"),
+                Background = Ui.FundoPainel(p.Cor),
+                BorderBrush = Ui.CorBorda,
                 BorderThickness = new Thickness(1),
-                Effect = new DropShadowEffect { BlurRadius = 24, ShadowDepth = 4, Opacity = 0.5 }
+                Effect = new DropShadowEffect { BlurRadius = 26, ShadowDepth = 5, Opacity = 0.5, Color = Colors.Black }
             };
 
             // cabecalho: titulo no centro + engrenagem
             var cab = new Grid { Margin = new Thickness(0, 0, 0, 12) };
-            _titulo.Foreground = Brushes.White; _titulo.FontSize = 15; _titulo.FontWeight = FontWeights.SemiBold;
+            _titulo.Foreground = Ui.CorTexto; _titulo.FontSize = 15; _titulo.FontWeight = FontWeights.SemiBold;
             _titulo.HorizontalAlignment = HorizontalAlignment.Center; _titulo.Background = Brushes.Transparent;
             _titulo.ContextMenu = MenuTitulo();
             var engrenagem = new TextBlock
             {
-                Text = "⚙", FontFamily = new FontFamily("Segoe UI Symbol"), FontSize = 18, Foreground = Ui.Pincel("#BBFFFFFF"),
+                Text = "\u2699", FontFamily = new FontFamily("Segoe UI Symbol"), FontSize = 18, Foreground = Ui.CorSubtexto,
                 HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
                 Cursor = Cursors.Hand, Background = Brushes.Transparent, ToolTip = "Personalizar esta pasta", Padding = new Thickness(6, 0, 0, 0)
             };
@@ -113,7 +114,7 @@ namespace PastasBarra
 
             DragEnter += (s, e) => { if (!e.Data.GetDataPresent(FormatoApp)) { e.Effects = DragDropEffects.Copy; _moldura.BorderBrush = Ui.Pincel("#CCFFFFFF"); e.Handled = true; } };
             DragOver += (s, e) => { if (!e.Data.GetDataPresent(FormatoApp)) { e.Effects = DragDropEffects.Copy; e.Handled = true; } };
-            DragLeave += (s, e) => _moldura.BorderBrush = Ui.Pincel("#33FFFFFF");
+            DragLeave += (s, e) => _moldura.BorderBrush = Ui.CorBorda;
             Drop += (s, e) => Soltar(e);
             ContentRendered += (s, e) => { Reposicionar(); Activate(); Entrar(); };
             SizeChanged += (s, e) => Reposicionar();
@@ -121,7 +122,39 @@ namespace PastasBarra
             Closing += (s, e) => _fechando = true;
             // no modo de edicao o painel fica aberto (permite arrastar apps de outras janelas para ele)
             Deactivated += (s, e) => { if (_ativou && !_ocupado && !_fechando && !_editando) FecharSuave(); };
-            KeyDown += (s, e) => { if (e.Key == Key.Escape) { if (_editando) AlternarEdicao(); else FecharSuave(); } };
+            
+            // Busca rapida ao digitar letras diretamente com o painel aberto
+            KeyDown += (s, e) =>
+            {
+                if (e.Key == Key.Escape)
+                {
+                    if (!string.IsNullOrEmpty(_filtro)) { _filtro = ""; Montar(); }
+                    else if (_editando) AlternarEdicao();
+                    else FecharSuave();
+                }
+                else if (e.Key == Key.Enter && !string.IsNullOrEmpty(_filtro))
+                {
+                    var primeiro = _pasta.Apps.FirstOrDefault(a => a.Nome.IndexOf(_filtro, StringComparison.CurrentCultureIgnoreCase) >= 0);
+                    if (primeiro != null) { Shell.Abrir(primeiro); FecharSuave(); }
+                }
+                else if (e.Key == Key.Back)
+                {
+                    if (_filtro.Length > 0)
+                    {
+                        _filtro = _filtro.Substring(0, _filtro.Length - 1);
+                        Montar();
+                    }
+                }
+            };
+            TextInput += (s, e) =>
+            {
+                if (_editando) return;
+                if (!string.IsNullOrEmpty(e.Text) && !char.IsControl(e.Text[0]))
+                {
+                    _filtro += e.Text;
+                    Montar();
+                }
+            };
             Closed += (s, e) => { _fechouEm = DateTime.Now; _fechouId = _pasta.Id; if (_aberto == this) _aberto = null; };
             Montar();
 
@@ -172,57 +205,92 @@ namespace PastasBarra
         // ---------- conteudo ----------
         void Montar()
         {
-            _titulo.Text = _pasta.Nome;
+            if (string.IsNullOrEmpty(_filtro))
+            {
+                _titulo.Text = _pasta.Nome;
+            }
+            else
+            {
+                _titulo.Text = "🔍 " + _filtro;
+            }
+            _titulo.Foreground = Ui.CorTexto;
             _moldura.Background = Ui.FundoPainel(_pasta.Cor);
+            _moldura.BorderBrush = Ui.CorBorda;
             _grade.Children.Clear();
             _pontos.Clear();
-            _grade.Columns = Math.Min(5, Math.Max(2, _pasta.Apps.Count + 1));
-            foreach (var app in _pasta.Apps.ToList())
+
+            var apps = string.IsNullOrEmpty(_filtro)
+                ? _pasta.Apps.ToList()
+                : _pasta.Apps.Where(a => a.Nome.IndexOf(_filtro, StringComparison.CurrentCultureIgnoreCase) >= 0).ToList();
+
+            if (apps.Count == 0 && !string.IsNullOrEmpty(_filtro))
             {
-                var img = new Image { Width = 48, Height = 48, HorizontalAlignment = HorizontalAlignment.Center, Source = Ui.Carregar(app.Icone) };
-                RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
-                var ponto = new Ellipse { Width = 5, Height = 5, Margin = new Thickness(0, 4, 0, 0), Fill = Ui.Pincel("#7DD3FC"), Opacity = 0 };
-                var celula = NovaCelula(app.Nome, img, ponto);
-                _pontos.Add(Tuple.Create(app, ponto));
-                celula.ContextMenu = MenuApp(app);
-                var a = app;
-                var host = new Grid();
-                host.Children.Add(celula);
+                _grade.Columns = 1;
+                var vazio = new TextBlock
+                {
+                    Text = "Nenhum app encontrado para \"" + _filtro + "\"\n(Pressione Esc para limpar)",
+                    Foreground = Ui.CorSubtexto,
+                    FontSize = 12,
+                    TextAlignment = TextAlignment.Center,
+                    Margin = new Thickness(24, 18, 24, 18)
+                };
+                _grade.Children.Add(vazio);
+            }
+            else
+            {
+                _grade.Columns = Math.Min(5, Math.Max(2, apps.Count + (_editando ? 1 : 0)));
+                foreach (var app in apps)
+                {
+                    var img = new Image { Width = 48, Height = 48, HorizontalAlignment = HorizontalAlignment.Center, Source = Ui.Carregar(app.Icone) };
+                    RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
+                    var ponto = new Ellipse { Width = 5, Height = 5, Margin = new Thickness(0, 4, 0, 0), Fill = Ui.Pincel("#7DD3FC"), Opacity = 0 };
+                    var celula = NovaCelula(app.Nome, img, ponto);
+                    _pontos.Add(Tuple.Create(app, ponto));
+                    celula.ContextMenu = MenuApp(app);
+                    var a = app;
+                    var host = new Grid();
+                    host.Children.Add(celula);
+                    if (_editando)
+                    {
+                        celula.Cursor = Cursors.SizeAll;
+                        ConfigurarArrasto(host, celula, a);
+                        var x = new Border
+                        {
+                            Width = 20, Height = 20, CornerRadius = new CornerRadius(10), Background = Ui.Pincel("#E5484D"),
+                            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Cursor = Cursors.Hand,
+                            Child = new TextBlock { Text = "✕", Foreground = Brushes.White, FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, FontFamily = new FontFamily("Segoe UI Symbol") }
+                        };
+                        x.MouseLeftButtonUp += (s, e) => { _pasta.Apps.Remove(a); Salvar(); e.Handled = true; };
+                        host.Children.Add(x);
+                    }
+                    else
+                    {
+                        celula.MouseLeftButtonUp += (s, e) => { Shell.Abrir(a); FecharSuave(); };
+                    }
+                    _grade.Children.Add(host);
+                }
+
                 if (_editando)
                 {
-                    celula.Cursor = Cursors.SizeAll;
-                    ConfigurarArrasto(host, celula, a);
-                    var x = new Border
+                    var mais = new TextBlock
                     {
-                        Width = 20, Height = 20, CornerRadius = new CornerRadius(10), Background = Ui.Pincel("#E5484D"),
-                        HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Cursor = Cursors.Hand,
-                        Child = new TextBlock { Text = "✕", Foreground = Brushes.White, FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, FontFamily = new FontFamily("Segoe UI Symbol") }
+                        Text = "+", Foreground = Ui.CorSubtexto, FontSize = 34, Height = 48,
+                        HorizontalAlignment = HorizontalAlignment.Center, LineHeight = 44, LineStackingStrategy = LineStackingStrategy.BlockLineHeight
                     };
-                    x.MouseLeftButtonUp += (s, e) => { _pasta.Apps.Remove(a); Salvar(); e.Handled = true; };
-                    host.Children.Add(x);
+                    var cel = NovaCelula("Adicionar", mais, null);
+                    cel.MouseLeftButtonUp += (s, e) =>
+                    {
+                        AppItem item = null;
+                        Dialogo(() => item = Ui.EscolherApp(this));
+                        if (item == null) return;
+                        if (_pasta.Apps.Any(x => x.Alvo == item.Alvo)) return;
+                        _pasta.Apps.Add(item);
+                        Salvar();
+                    };
+                    _grade.Children.Add(cel);
                 }
-                else
-                {
-                    celula.MouseLeftButtonUp += (s, e) => { Shell.Abrir(a); FecharSuave(); };
-                }
-                _grade.Children.Add(host);
             }
-            var mais = new TextBlock
-            {
-                Text = "+", Foreground = Ui.Pincel("#99FFFFFF"), FontSize = 34, Height = 48,
-                HorizontalAlignment = HorizontalAlignment.Center, LineHeight = 44, LineStackingStrategy = LineStackingStrategy.BlockLineHeight
-            };
-            var cel = NovaCelula("Adicionar", mais, null);
-            cel.MouseLeftButtonUp += (s, e) =>
-            {
-                AppItem item = null;
-                Dialogo(() => item = Ui.EscolherApp(this));
-                if (item == null) return;
-                if (_pasta.Apps.Any(x => x.Alvo == item.Alvo)) return;
-                _pasta.Apps.Add(item);
-                Salvar();
-            };
-            _grade.Children.Add(cel);
+
             _rodape.Content = _editando ? BarraEdicao() : Dica();
             AtualizarPontos();
             UpdateLayout();
@@ -239,7 +307,7 @@ namespace PastasBarra
             return new TextBlock
             {
                 Text = "⚙ para personalizar e arrastar apps para cá",
-                Foreground = Ui.Pincel("#99FFFFFF"), FontSize = 10.5,
+                Foreground = Ui.CorSubtexto, FontSize = 10.5,
                 HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 10, 0, 0)
             };
         }
@@ -256,7 +324,7 @@ namespace PastasBarra
                 var b = new Border
                 {
                     Width = 24, Height = 24, CornerRadius = new CornerRadius(12), Margin = new Thickness(4), Background = Ui.Pincel(cor),
-                    BorderBrush = atual ? Brushes.White : Ui.Pincel("#44FFFFFF"), BorderThickness = new Thickness(atual ? 2 : 1), Cursor = Cursors.Hand
+                    BorderBrush = atual ? Brushes.White : Ui.CorBorda, BorderThickness = new Thickness(atual ? 2 : 1), Cursor = Cursors.Hand
                 };
                 b.MouseLeftButtonUp += (s, e) => { _pasta.Cor = cor; Salvar(); };
                 cores.Children.Add(b);
@@ -274,27 +342,34 @@ namespace PastasBarra
                 acoes2.Children.Add(Acao(txtRot, DefinirRotulo, false));
             }
             var gravar = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) };
-            var botaoSalvar = Acao(_alterado ? "Salvar altera\u00e7\u00f5es" : "Tudo salvo \u2713", () => { if (_alterado) Persistir(); }, false);
-            if (_alterado) botaoSalvar.Background = Ui.Pincel("#2E9E5B");
+            var botaoSalvar = Acao(_alterado ? "Salvar alterações" : "Tudo salvo ✓", () => { if (_alterado) Persistir(); }, false);
+            if (_alterado) botaoSalvar.Background = Ui.Pincel("#2563EB");
             gravar.Children.Add(botaoSalvar);
             if (_alterado) gravar.Children.Add(Acao("Descartar", Descartar, true));
             pl.Children.Add(cores); pl.Children.Add(acoes); pl.Children.Add(acoes2); pl.Children.Add(gravar);
             pl.Children.Add(new TextBlock
             {
-                Text = "Solte aqui arquivos, atalhos ou apps para adicionar · arraste os ícones para reordenar · ✕ remove · ⚙ conclui",
-                Foreground = Ui.Pincel("#99FFFFFF"), FontSize = 10.5, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 10, 0, 0)
+                Text = "Solte aqui arquivos, atalhos ou apps · arraste os ícones para reordenar · ✕ remove · ⚙ conclui",
+                Foreground = Ui.CorSubtexto, FontSize = 10.5, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 10, 0, 0)
             });
             return pl;
         }
 
         Border Acao(string texto, Action acao, bool perigo)
         {
+            var bgNormal = perigo ? Ui.Pincel(Ui.TemaEscuro ? "#33E5484D" : "#1AE5484D") : Ui.CorCard;
+            var bgHover = perigo ? Ui.Pincel(Ui.TemaEscuro ? "#4DE5484D" : "#2EE5484D") : Ui.CorCardHover;
+            var fg = perigo ? Ui.Pincel("#EF4444") : Ui.CorTexto;
             var b = new Border
             {
-                Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(3, 0, 3, 0), CornerRadius = new CornerRadius(8), Cursor = Cursors.Hand,
-                Background = Ui.Pincel(perigo ? "#33E5484D" : "#22FFFFFF"),
-                Child = new TextBlock { Text = texto, FontSize = 11.5, Foreground = perigo ? Ui.Pincel("#FF8A8E") : Brushes.White }
+                Padding = new Thickness(10, 6, 10, 6), Margin = new Thickness(3, 0, 3, 0), CornerRadius = new CornerRadius(8), Cursor = Cursors.Hand,
+                Background = bgNormal,
+                BorderBrush = Ui.CorBorda,
+                BorderThickness = new Thickness(1),
+                Child = new TextBlock { Text = texto, FontSize = 11.5, Foreground = fg }
             };
+            b.MouseEnter += (s, e) => b.Background = bgHover;
+            b.MouseLeave += (s, e) => b.Background = bgNormal;
             b.MouseLeftButtonUp += (s, e) => acao();
             return b;
         }
@@ -310,13 +385,13 @@ namespace PastasBarra
             col.Children.Add(icone);
             col.Children.Add(new TextBlock
             {
-                Text = texto, Foreground = Brushes.White, FontSize = 11.5, TextAlignment = TextAlignment.Center,
+                Text = texto, Foreground = Ui.CorTexto, FontSize = 11.5, TextAlignment = TextAlignment.Center,
                 TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.CharacterEllipsis,
                 MaxHeight = 32, Margin = new Thickness(0, 6, 0, 0)
             });
             col.Children.Add(ponto ?? new Ellipse { Width = 5, Height = 5, Margin = new Thickness(0, 4, 0, 0), Opacity = 0 });
             celula.Child = col;
-            var hover = Ui.Pincel("#33FFFFFF");
+            var hover = Ui.CorCardHover;
             celula.MouseEnter += (s, e) => celula.Background = hover;
             celula.MouseLeave += (s, e) => celula.Background = Brushes.Transparent;
             return celula;

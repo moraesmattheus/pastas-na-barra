@@ -17,7 +17,7 @@ namespace PastasBarra
     {
         const string ChaveUn = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\PastasBarra";
         const string ChaveRun = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        public const string Versao = "0.2.4";
+        public const string Versao = "0.3.0";
 
         public static readonly string Pasta = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "PastasBarra");
@@ -127,32 +127,140 @@ namespace PastasBarra
         public InstalarJanela()
         {
             Title = "Pastas na barra";
-            Width = 480; SizeToContent = SizeToContent.Height;
+            Width = 520;
+            SizeToContent = SizeToContent.Height;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            ResizeMode = ResizeMode.NoResize;
+            WindowStyle = WindowStyle.None;
+            AllowsTransparency = true;
+            Background = Brushes.Transparent;
             ShowInTaskbar = false;
-            Background = Ui.Pincel("#FFFAFAFA");
+            ResizeMode = ResizeMode.NoResize;
 
-            var pl = new StackPanel { Margin = new Thickness(24) };
-            bool atualizando = File.Exists(Instalador.ExeInstalado);
-            pl.Children.Add(new TextBlock { Text = atualizando ? "Atualizar Pastas na barra?" : "Instalar Pastas na barra?", FontSize = 22, FontWeight = FontWeights.SemiBold });
-            pl.Children.Add(new TextBlock
+            KeyDown += (s, e) => { if (e.Key == System.Windows.Input.Key.Escape) Close(); };
+
+            var moldura = new Border
             {
-                Text = "Vamos copiar o programa para a sua conta (sem precisar de administrador), criar um atalho no Menu Iniciar e fazer ele abrir junto com o Windows. Você pode desinstalar depois em Configurações > Aplicativos.",
-                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 16), Foreground = Brushes.Gray
-            });
-            var inicio = new CheckBox { Content = "Abrir junto com o Windows (deixa o painel mais r\u00e1pido)", IsChecked = true, Margin = new Thickness(0, 0, 0, 6) };
-            var auto = new CheckBox { Content = "Avisar quando houver vers\u00e3o nova (consulta o GitHub; opcional, desligado por padr\u00e3o)", IsChecked = false, Margin = new Thickness(0, 0, 0, 14) };
-            pl.Children.Add(inicio); pl.Children.Add(auto);
-            var linha = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-            var so = new Button { Content = "Só executar", Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(0, 0, 8, 0) };
-            var ok = new Button { Content = atualizando ? "Atualizar" : "Instalar", Padding = new Thickness(24, 8, 24, 8), IsDefault = true };
-            linha.Children.Add(so); linha.Children.Add(ok);
-            pl.Children.Add(linha);
-            Content = pl;
+                CornerRadius = new CornerRadius(16),
+                Background = Ui.CorFundoJanela,
+                BorderBrush = Ui.CorBorda,
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(12),
+                Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 28, ShadowDepth = 6, Opacity = 0.45, Color = Colors.Black }
+            };
 
-            so.Click += (s, e) => { Repo.Dados.ModoPortatil = true; Repo.Salvar(); Close(); };
-            ok.Click += (s, e) =>
+            var gridPrincipal = new Grid();
+            gridPrincipal.RowDefinitions.Add(new RowDefinition { Height = new GridLength(42) }); // cabecalho
+            gridPrincipal.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // corpo
+            gridPrincipal.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // rodape
+
+            // Cabecalho
+            var cabecalho = new Grid { Background = Brushes.Transparent, Cursor = System.Windows.Input.Cursors.SizeAll };
+            cabecalho.MouseLeftButtonDown += (s, e) => { if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed) DragMove(); };
+
+            var tituloStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) };
+            var iconeDots = new Canvas { Width = 14, Height = 14, Margin = new Thickness(0, 0, 8, 0) };
+            var coresDots = new[] { "#7DD3FC", "#A78BFA", "#FB923C", "#4ADE80" };
+            for (int i = 0; i < 4; i++)
+            {
+                var el = new System.Windows.Shapes.Ellipse { Width = 6, Height = 6, Fill = Ui.Pincel(coresDots[i]) };
+                Canvas.SetLeft(el, (i % 2) * 7);
+                Canvas.SetTop(el, (i / 2) * 7);
+                iconeDots.Children.Add(el);
+            }
+            tituloStack.Children.Add(iconeDots);
+            tituloStack.Children.Add(new TextBlock
+            {
+                Text = "Instalação · Pastas na barra",
+                Foreground = Ui.CorTexto,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            cabecalho.Children.Add(tituloStack);
+
+            var btnFechar = new Border
+            {
+                Width = 32,
+                Height = 32,
+                CornerRadius = new CornerRadius(8),
+                Background = Brushes.Transparent,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0),
+                Cursor = System.Windows.Input.Cursors.Hand
+            };
+            var txtX = new TextBlock
+            {
+                Text = "\u2715",
+                Foreground = Ui.CorSubtexto,
+                FontSize = 12,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            btnFechar.Child = txtX;
+            btnFechar.MouseEnter += (s, e) => { btnFechar.Background = Ui.Pincel("#E81123"); txtX.Foreground = Brushes.White; };
+            btnFechar.MouseLeave += (s, e) => { btnFechar.Background = Brushes.Transparent; txtX.Foreground = Ui.CorSubtexto; };
+            btnFechar.MouseLeftButtonUp += (s, e) => Close();
+            cabecalho.Children.Add(btnFechar);
+
+            // Corpo
+            var corpo = new StackPanel { Margin = new Thickness(22, 10, 22, 14) };
+            bool atualizando = File.Exists(Instalador.ExeInstalado);
+            corpo.Children.Add(new TextBlock
+            {
+                Text = atualizando ? "Atualizar Pastas na barra" : "Organize sua barra de tarefas",
+                FontSize = 18,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Ui.CorTexto
+            });
+            corpo.Children.Add(new TextBlock
+            {
+                Text = "Instalação leve para o seu usuário (sem precisar de senha de administrador). Você pode desinstalar quando quiser em Configurações do Windows.",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 6, 0, 14),
+                FontSize = 12.5,
+                Foreground = Ui.CorSubtexto
+            });
+
+            var cardDestaques = new Border
+            {
+                CornerRadius = new CornerRadius(10),
+                Background = Ui.CorCard,
+                BorderBrush = Ui.CorBorda,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(14, 10, 14, 10),
+                Margin = new Thickness(0, 0, 0, 12)
+            };
+            var stDestaques = new StackPanel();
+            Action<string> addDestaque = (txt) =>
+            {
+                var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 3) };
+                row.Children.Add(new TextBlock { Text = "✓", Foreground = Ui.Pincel("#10B981"), FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 8, 0) });
+                row.Children.Add(new TextBlock { Text = txt, Foreground = Ui.CorTexto, FontSize = 12 });
+                stDestaques.Children.Add(row);
+            };
+            addDestaque("Agrupamento de apps e pastas estilo smartphone");
+            addDestaque("Busca instantânea ao vivo enquanto você digita");
+            addDestaque("100% nativo, sem navegadores embutidos, ultraleve");
+            cardDestaques.Child = stDestaques;
+            corpo.Children.Add(cardDestaques);
+
+            var inicio = Ui.CaixaSelecao("Abrir junto com o Windows (deixa a resposta instantânea)", true);
+            var auto = Ui.CaixaSelecao("Avisar quando houver nova versão (consulta o GitHub)", false);
+            corpo.Children.Add(inicio);
+            corpo.Children.Add(auto);
+
+            // Rodape
+            var rodape = new Border
+            {
+                BorderBrush = Ui.CorBorda,
+                BorderThickness = new Thickness(0, 1, 0, 0),
+                Padding = new Thickness(16, 12, 16, 14),
+                Background = Ui.CorCard
+            };
+            var rodapeStack = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var so = Ui.Botao("Só executar", () => { Repo.Dados.ModoPortatil = true; Repo.Salvar(); Close(); });
+            var ok = Ui.Botao(atualizando ? "Atualizar agora" : "Instalar", () =>
             {
                 string erro;
                 if (Instalador.Instalar(inicio.IsChecked == true, out erro))
@@ -163,7 +271,21 @@ namespace PastasBarra
                     Close();
                 }
                 else MessageBox.Show("Não foi possível instalar:\n" + erro, "Pastas na barra");
-            };
+            }, true);
+
+            rodapeStack.Children.Add(so);
+            rodapeStack.Children.Add(ok);
+            rodape.Child = rodapeStack;
+
+            Grid.SetRow(cabecalho, 0);
+            Grid.SetRow(corpo, 1);
+            Grid.SetRow(rodape, 2);
+            gridPrincipal.Children.Add(cabecalho);
+            gridPrincipal.Children.Add(corpo);
+            gridPrincipal.Children.Add(rodape);
+
+            moldura.Child = gridPrincipal;
+            Content = moldura;
         }
     }
 }

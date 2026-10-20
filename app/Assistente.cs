@@ -8,7 +8,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 
 namespace PastasBarra
@@ -44,48 +46,146 @@ namespace PastasBarra
 
         readonly TextBlock _status = new TextBlock();
         readonly StackPanel _lista = new StackPanel();
-        readonly Button _criar = new Button();
+        readonly Border _btnCriar;
         readonly List<Tuple<Modelo, List<CheckBox>>> _grupos = new List<Tuple<Modelo, List<CheckBox>>>();
 
         public AssistenteJanela()
         {
             Title = "Pastas na barra · Configuração inicial";
-            Width = 560; Height = 700;
+            Width = 600;
+            Height = 680;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            ResizeMode = ResizeMode.NoResize;
+            WindowStyle = WindowStyle.None;
+            AllowsTransparency = true;
+            Background = Brushes.Transparent;
             ShowInTaskbar = false;
-            Background = Ui.Pincel("#FFFAFAFA");
+            ResizeMode = ResizeMode.NoResize;
 
-            var raiz = new Grid { Margin = new Thickness(22) };
-            raiz.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            raiz.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            raiz.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            KeyDown += (s, e) => { if (e.Key == Key.Escape) Close(); };
 
-            var topo = new StackPanel();
-            topo.Children.Add(new TextBlock { Text = "Vamos organizar seus apps em pastas", FontSize = 22, FontWeight = FontWeights.SemiBold });
+            var moldura = new Border
+            {
+                CornerRadius = new CornerRadius(16),
+                Background = Ui.CorFundoJanela,
+                BorderBrush = Ui.CorBorda,
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(12),
+                Effect = new DropShadowEffect { BlurRadius = 28, ShadowDepth = 6, Opacity = 0.45, Color = Colors.Black }
+            };
+
+            var gridPrincipal = new Grid();
+            gridPrincipal.RowDefinitions.Add(new RowDefinition { Height = new GridLength(42) }); // cabecalho
+            gridPrincipal.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // corpo
+            gridPrincipal.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // rodape
+
+            // Cabecalho
+            var cabecalho = new Grid { Background = Brushes.Transparent, Cursor = Cursors.SizeAll };
+            cabecalho.MouseLeftButtonDown += (s, e) => { if (e.LeftButton == MouseButtonState.Pressed) DragMove(); };
+
+            var tituloStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) };
+            var iconeDots = new Canvas { Width = 14, Height = 14, Margin = new Thickness(0, 0, 8, 0) };
+            var coresDots = new[] { "#7DD3FC", "#A78BFA", "#FB923C", "#4ADE80" };
+            for (int i = 0; i < 4; i++)
+            {
+                var el = new Ellipse { Width = 6, Height = 6, Fill = Ui.Pincel(coresDots[i]) };
+                Canvas.SetLeft(el, (i % 2) * 7);
+                Canvas.SetTop(el, (i / 2) * 7);
+                iconeDots.Children.Add(el);
+            }
+            tituloStack.Children.Add(iconeDots);
+            tituloStack.Children.Add(new TextBlock
+            {
+                Text = "Organização Inicial · Pastas na barra",
+                Foreground = Ui.CorTexto,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            cabecalho.Children.Add(tituloStack);
+
+            var btnFechar = new Border
+            {
+                Width = 32,
+                Height = 32,
+                CornerRadius = new CornerRadius(8),
+                Background = Brushes.Transparent,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0),
+                Cursor = Cursors.Hand
+            };
+            var txtX = new TextBlock
+            {
+                Text = "\u2715",
+                Foreground = Ui.CorSubtexto,
+                FontSize = 12,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            btnFechar.Child = txtX;
+            btnFechar.MouseEnter += (s, e) => { btnFechar.Background = Ui.Pincel("#E81123"); txtX.Foreground = Brushes.White; };
+            btnFechar.MouseLeave += (s, e) => { btnFechar.Background = Brushes.Transparent; txtX.Foreground = Ui.CorSubtexto; };
+            btnFechar.MouseLeftButtonUp += (s, e) => Close();
+            cabecalho.Children.Add(btnFechar);
+
+            // Corpo
+            var corpo = new Grid { Margin = new Thickness(20, 6, 20, 10) };
+            corpo.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            corpo.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            var topo = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
             topo.Children.Add(new TextBlock
             {
-                Text = "Encontramos os apps instalados e sugerimos pastas, como no celular. Desmarque o que não quiser; você muda tudo depois.",
-                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 8), Foreground = Brushes.Gray
+                Text = "Vamos organizar seus aplicativos em pastas",
+                FontSize = 18,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Ui.CorTexto
             });
-            _status.Text = "Procurando seus apps...";
-            _status.Margin = new Thickness(0, 0, 0, 6);
+            topo.Children.Add(new TextBlock
+            {
+                Text = "Encontramos os programas no seu computador e sugerimos pastas prontas como no celular. Desmarque o que não quiser; você pode editar tudo depois.",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 4, 0, 6),
+                FontSize = 12.5,
+                Foreground = Ui.CorSubtexto
+            });
+            _status.Text = "Procurando seus aplicativos...";
+            _status.FontSize = 12;
+            _status.Foreground = Ui.CorDestaque;
             topo.Children.Add(_status);
-            raiz.Children.Add(topo);
+            corpo.Children.Add(topo);
 
             var rolagem = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _lista };
             Grid.SetRow(rolagem, 1);
-            raiz.Children.Add(rolagem);
+            corpo.Children.Add(rolagem);
 
-            var rodape = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
-            var pular = new Button { Content = "Pular", Padding = new Thickness(18, 8, 18, 8), Margin = new Thickness(0, 0, 8, 0) };
-            pular.Click += (s, e) => { Repo.Dados.PrimeiraVezConcluida = true; Repo.Salvar(); Close(); };
-            _criar.Content = "Criar pastas"; _criar.Padding = new Thickness(22, 8, 22, 8); _criar.IsEnabled = false; _criar.IsDefault = true;
-            _criar.Click += (s, e) => Criar();
-            rodape.Children.Add(pular); rodape.Children.Add(_criar);
+            // Rodape
+            var rodape = new Border
+            {
+                BorderBrush = Ui.CorBorda,
+                BorderThickness = new Thickness(0, 1, 0, 0),
+                Padding = new Thickness(16, 12, 16, 14),
+                Background = Ui.CorCard
+            };
+            var rodapeStack = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var pular = Ui.Botao("Pular", () => { Repo.Dados.PrimeiraVezConcluida = true; Repo.Salvar(); Close(); });
+            _btnCriar = Ui.Botao("Criar pastas selecionadas", Criar, true);
+            _btnCriar.IsEnabled = false;
+            _btnCriar.Opacity = 0.5;
+
+            rodapeStack.Children.Add(pular);
+            rodapeStack.Children.Add(_btnCriar);
+            rodape.Child = rodapeStack;
+
+            Grid.SetRow(cabecalho, 0);
+            Grid.SetRow(corpo, 1);
             Grid.SetRow(rodape, 2);
-            raiz.Children.Add(rodape);
-            Content = raiz;
+            gridPrincipal.Children.Add(cabecalho);
+            gridPrincipal.Children.Add(corpo);
+            gridPrincipal.Children.Add(rodape);
+
+            moldura.Child = gridPrincipal;
+            Content = moldura;
 
             Loaded += (s, e) =>
             {
@@ -110,26 +210,83 @@ namespace PastasBarra
                 total += achados.Count;
 
                 var caixas = new List<CheckBox>();
-                var cab = new CheckBox { Content = m.Nome + "  ·  " + achados.Count + " apps", IsChecked = true, FontWeight = FontWeights.SemiBold, FontSize = 14, Margin = new Thickness(0, 12, 0, 4) };
-                var corpo = new WrapPanel { Margin = new Thickness(22, 0, 0, 0) };
+
+                var card = new Border
+                {
+                    CornerRadius = new CornerRadius(10),
+                    Background = Ui.CorCard,
+                    BorderBrush = Ui.CorBorda,
+                    BorderThickness = new Thickness(1),
+                    Padding = new Thickness(14, 10, 14, 10),
+                    Margin = new Thickness(0, 0, 0, 10)
+                };
+
+                var cardStack = new StackPanel();
+
+                var cabGrid = new Grid();
+                cabGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                cabGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                var dot = new Ellipse
+                {
+                    Width = 12,
+                    Height = 12,
+                    Fill = Ui.Pincel(m.Cor),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 8, 0)
+                };
+                cabGrid.Children.Add(dot);
+
+                var cab = new CheckBox
+                {
+                    Content = m.Nome + "  ·  " + achados.Count + " apps",
+                    IsChecked = true,
+                    FontWeight = FontWeights.SemiBold,
+                    FontSize = 13.5,
+                    Foreground = Ui.CorTexto,
+                    Cursor = Cursors.Hand
+                };
+                Grid.SetColumn(cab, 1);
+                cabGrid.Children.Add(cab);
+                cardStack.Children.Add(cabGrid);
+
+                var corpo = new WrapPanel { Margin = new Thickness(20, 8, 0, 0) };
                 foreach (var a in achados)
                 {
-                    var cb = new CheckBox { Content = a.Nome, Tag = a, IsChecked = true, Margin = new Thickness(0, 0, 14, 3) };
-                    caixas.Add(cb); corpo.Children.Add(cb);
+                    var cb = new CheckBox
+                    {
+                        Content = a.Nome,
+                        Tag = a,
+                        IsChecked = true,
+                        Margin = new Thickness(0, 0, 14, 4),
+                        Foreground = Ui.CorSubtexto,
+                        FontSize = 12,
+                        Cursor = Cursors.Hand
+                    };
+                    caixas.Add(cb);
+                    corpo.Children.Add(cb);
                 }
                 cab.Click += (s, e) => { foreach (var c in caixas) c.IsChecked = cab.IsChecked; };
-                _lista.Children.Add(cab); _lista.Children.Add(corpo);
+                cardStack.Children.Add(corpo);
+                card.Child = cardStack;
+
+                _lista.Children.Add(card);
                 _grupos.Add(Tuple.Create(m, caixas));
             }
             _status.Text = total > 0 ? "Encontramos " + total + " apps em " + _grupos.Count + " pastas sugeridas." : "Não encontramos sugestões novas. Você pode criar pastas pelas Configurações.";
-            _criar.IsEnabled = true;
-            ((ScrollViewer)_lista.Parent).ScrollToTop();
+            _status.Foreground = Ui.CorSubtexto;
+            _btnCriar.IsEnabled = true;
+            _btnCriar.Opacity = 1;
+            var sv = _lista.Parent as ScrollViewer;
+            if (sv != null) sv.ScrollToTop();
         }
 
         void Criar()
         {
-            _criar.IsEnabled = false;
+            _btnCriar.IsEnabled = false;
+            _btnCriar.Opacity = 0.5;
             _status.Text = "Criando pastas...";
+            _status.Foreground = Ui.CorDestaque;
             var escolhas = _grupos.Select(g => Tuple.Create(g.Item1, g.Item2.Where(c => c.IsChecked == true).Select(c => (StartApp)c.Tag).ToList()))
                                   .Where(g => g.Item2.Count > 0).ToList();
             Task.Run(() =>
@@ -146,8 +303,10 @@ namespace PastasBarra
             {
                 if (t.IsFaulted)
                 {
-                    _status.Text = "N\u00e3o foi poss\u00edvel criar as pastas. Tente de novo.";
-                    _criar.IsEnabled = true;
+                    _status.Text = "Não foi possível criar as pastas. Tente de novo.";
+                    _status.Foreground = Ui.Pincel("#EF4444");
+                    _btnCriar.IsEnabled = true;
+                    _btnCriar.Opacity = 1;
                     return;
                 }
                 foreach (var p in t.Result) { Repo.Dados.Pastas.Add(p); Shell.AtualizarPasta(p); }
@@ -162,32 +321,128 @@ namespace PastasBarra
     // Guia para fixar: o icone de cada pasta pode ser arrastado direto para a barra de tarefas.
     public class FixarJanela : Window
     {
-        readonly List<Tuple<Pasta, TextBlock>> _linhas = new List<Tuple<Pasta, TextBlock>>();
+        readonly List<Tuple<Pasta, Border, TextBlock>> _linhas = new List<Tuple<Pasta, Border, TextBlock>>();
         readonly DispatcherTimer _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
-        TextBlock _estadoSep;
+        Border _badgeSep;
+        TextBlock _txtSep;
 
         public FixarJanela(IEnumerable<Pasta> pastas)
         {
             Title = "Fixe suas pastas na barra de tarefas";
-            Width = 600; SizeToContent = SizeToContent.Height; MaxHeight = 720;
+            Width = 640;
+            SizeToContent = SizeToContent.Height;
+            MaxHeight = 720;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            ResizeMode = ResizeMode.NoResize;
+            WindowStyle = WindowStyle.None;
+            AllowsTransparency = true;
+            Background = Brushes.Transparent;
             ShowInTaskbar = false;
-            Background = Ui.Pincel("#FFFAFAFA");
+            ResizeMode = ResizeMode.NoResize;
 
-            var pilha = new StackPanel { Margin = new Thickness(22) };
-            pilha.Children.Add(new TextBlock { Text = "Fixar na barra de tarefas", FontSize = 22, FontWeight = FontWeights.SemiBold });
-            pilha.Children.Add(new TextBlock
+            KeyDown += (s, e) => { if (e.Key == Key.Escape) Close(); };
+
+            var moldura = new Border
             {
-                Text = "Arraste cada pasta abaixo e solte na barra de tarefas (lá embaixo). Dica: use o Separador visual para dividir suas pastas dos aplicativos abertos no Windows.",
-                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 14), Foreground = Brushes.Gray
+                CornerRadius = new CornerRadius(16),
+                Background = Ui.CorFundoJanela,
+                BorderBrush = Ui.CorBorda,
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(12),
+                Effect = new DropShadowEffect { BlurRadius = 28, ShadowDepth = 6, Opacity = 0.45, Color = Colors.Black }
+            };
+
+            var gridPrincipal = new Grid();
+            gridPrincipal.RowDefinitions.Add(new RowDefinition { Height = new GridLength(42) }); // cabecalho
+            gridPrincipal.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // corpo
+            gridPrincipal.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // rodape
+
+            // Cabecalho
+            var cabecalho = new Grid { Background = Brushes.Transparent, Cursor = Cursors.SizeAll };
+            cabecalho.MouseLeftButtonDown += (s, e) => { if (e.LeftButton == MouseButtonState.Pressed) DragMove(); };
+
+            var tituloStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) };
+            var iconeDots = new Canvas { Width = 14, Height = 14, Margin = new Thickness(0, 0, 8, 0) };
+            var coresDots = new[] { "#7DD3FC", "#A78BFA", "#FB923C", "#4ADE80" };
+            for (int i = 0; i < 4; i++)
+            {
+                var el = new Ellipse { Width = 6, Height = 6, Fill = Ui.Pincel(coresDots[i]) };
+                Canvas.SetLeft(el, (i % 2) * 7);
+                Canvas.SetTop(el, (i / 2) * 7);
+                iconeDots.Children.Add(el);
+            }
+            tituloStack.Children.Add(iconeDots);
+            tituloStack.Children.Add(new TextBlock
+            {
+                Text = "Fixar na Barra de Tarefas · Pastas na barra",
+                Foreground = Ui.CorTexto,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            cabecalho.Children.Add(tituloStack);
+
+            var btnFechar = new Border
+            {
+                Width = 32,
+                Height = 32,
+                CornerRadius = new CornerRadius(8),
+                Background = Brushes.Transparent,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0),
+                Cursor = Cursors.Hand
+            };
+            var txtX = new TextBlock
+            {
+                Text = "\u2715",
+                Foreground = Ui.CorSubtexto,
+                FontSize = 12,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            btnFechar.Child = txtX;
+            btnFechar.MouseEnter += (s, e) => { btnFechar.Background = Ui.Pincel("#E81123"); txtX.Foreground = Brushes.White; };
+            btnFechar.MouseLeave += (s, e) => { btnFechar.Background = Brushes.Transparent; txtX.Foreground = Ui.CorSubtexto; };
+            btnFechar.MouseLeftButtonUp += (s, e) => Close();
+            cabecalho.Children.Add(btnFechar);
+
+            // Corpo
+            var corpo = new StackPanel { Margin = new Thickness(20, 8, 20, 12) };
+            corpo.Children.Add(new TextBlock
+            {
+                Text = "Arraste os ícones para a barra de tarefas",
+                FontSize = 18,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Ui.CorTexto
+            });
+            corpo.Children.Add(new TextBlock
+            {
+                Text = "Clique e arraste cada pasta para fixar lá embaixo. Dica: use o Separador visual para dividir suas pastas dos aplicativos abertos no Windows.",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 4, 0, 14),
+                FontSize = 12.5,
+                Foreground = Ui.CorSubtexto
             });
 
             var wrap = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Center };
             foreach (var p in pastas)
             {
                 var pasta = p;
-                var img = new Image { Width = 72, Height = 72, Source = Mosaico(pasta), Cursor = Cursors.Hand, ToolTip = "Arraste para a barra de tarefas" };
+                var card = new Border
+                {
+                    Width = 110,
+                    CornerRadius = new CornerRadius(12),
+                    Background = Ui.CorCard,
+                    BorderBrush = Ui.CorBorda,
+                    BorderThickness = new Thickness(1),
+                    Padding = new Thickness(8, 10, 8, 10),
+                    Margin = new Thickness(6),
+                    Cursor = Cursors.Hand
+                };
+
+                var item = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+
+                var img = new Image { Width = 64, Height = 64, Source = Mosaico(pasta), ToolTip = "Arraste para a barra de tarefas" };
                 RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
                 Point? inicio = null;
                 img.MouseLeftButtonDown += (s, e) => inicio = e.GetPosition(null);
@@ -200,18 +455,52 @@ namespace PastasBarra
                     var dados = new DataObject(DataFormats.FileDrop, new[] { Shell.CaminhoAtalho(pasta) });
                     DragDrop.DoDragDrop(img, dados, DragDropEffects.Copy | DragDropEffects.Link | DragDropEffects.Move);
                 };
-                var estado = new TextBlock { FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 2, 0, 0) };
-                var item = new StackPanel { Margin = new Thickness(12), Width = 100 };
+
+                var nome = new TextBlock
+                {
+                    Text = pasta.Nome,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 8, 0, 4),
+                    FontSize = 12,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = Ui.CorTexto,
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                };
+
+                var badge = new Border
+                {
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(6, 2, 6, 2),
+                    HorizontalAlignment = HorizontalAlignment.Center
+                };
+                var estado = new TextBlock { FontSize = 10.5, HorizontalAlignment = HorizontalAlignment.Center };
+                badge.Child = estado;
+
                 item.Children.Add(img);
-                item.Children.Add(new TextBlock { Text = pasta.Nome, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 6, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis });
-                item.Children.Add(estado);
-                wrap.Children.Add(item);
-                _linhas.Add(Tuple.Create(pasta, estado));
+                item.Children.Add(nome);
+                item.Children.Add(badge);
+                card.Child = item;
+                wrap.Children.Add(card);
+
+                _linhas.Add(Tuple.Create(pasta, badge, estado));
             }
 
             // Separador (divisor visual)
             Shell.GerarSeparador();
-            var imgSep = new Image { Width = 72, Height = 72, Source = ImgSeparador(), Cursor = Cursors.Hand, ToolTip = "Arraste para a barra de tarefas para separar as pastas dos apps normais" };
+            var cardSep = new Border
+            {
+                Width = 110,
+                CornerRadius = new CornerRadius(12),
+                Background = Ui.CorCard,
+                BorderBrush = Ui.CorBorda,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(8, 10, 8, 10),
+                Margin = new Thickness(6),
+                Cursor = Cursors.Hand
+            };
+
+            var itemSep = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+            var imgSep = new Image { Width = 64, Height = 64, Source = ImgSeparador(), ToolTip = "Arraste para separar suas pastas dos outros apps" };
             RenderOptions.SetBitmapScalingMode(imgSep, BitmapScalingMode.HighQuality);
             Point? iniSep = null;
             imgSep.MouseLeftButtonDown += (s, e) => iniSep = e.GetPosition(null);
@@ -224,24 +513,60 @@ namespace PastasBarra
                 var dados = new DataObject(DataFormats.FileDrop, new[] { Shell.CaminhoAtalhoSeparador });
                 DragDrop.DoDragDrop(imgSep, dados, DragDropEffects.Copy | DragDropEffects.Link | DragDropEffects.Move);
             };
-            var estadoSep = new TextBlock { FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 2, 0, 0) };
-            var itemSep = new StackPanel { Margin = new Thickness(12), Width = 100 };
+
+            var nomeSep = new TextBlock
+            {
+                Text = "│ Separador",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 8, 0, 4),
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Ui.CorTexto
+            };
+
+            var badgeSep = new Border
+            {
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(6, 2, 6, 2),
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            var estadoSep = new TextBlock { FontSize = 10.5, HorizontalAlignment = HorizontalAlignment.Center };
+            badgeSep.Child = estadoSep;
+
             itemSep.Children.Add(imgSep);
-            itemSep.Children.Add(new TextBlock { Text = "│ Separador", HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 6, 0, 0), FontWeight = FontWeights.SemiBold });
-            itemSep.Children.Add(estadoSep);
-            wrap.Children.Add(itemSep);
-            _estadoSep = estadoSep;
+            itemSep.Children.Add(nomeSep);
+            itemSep.Children.Add(badgeSep);
+            cardSep.Child = itemSep;
+            wrap.Children.Add(cardSep);
+            _badgeSep = badgeSep;
+            _txtSep = estadoSep;
 
-            pilha.Children.Add(new ScrollViewer { Content = wrap, MaxHeight = 420, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+            corpo.Children.Add(new ScrollViewer { Content = wrap, MaxHeight = 360, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
 
-            var rodape = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
-            var abrir = new Button { Content = "Abrir pasta dos atalhos", Padding = new Thickness(14, 8, 14, 8), Margin = new Thickness(0, 0, 8, 0) };
-            abrir.Click += (s, e) => Process.Start("explorer.exe", "\"" + Repo.Atalhos + "\"");
-            var pronto = new Button { Content = "Concluído", Padding = new Thickness(22, 8, 22, 8), IsDefault = true };
-            pronto.Click += (s, e) => Close();
-            rodape.Children.Add(abrir); rodape.Children.Add(pronto);
-            pilha.Children.Add(rodape);
-            Content = pilha;
+            // Rodape
+            var rodape = new Border
+            {
+                BorderBrush = Ui.CorBorda,
+                BorderThickness = new Thickness(0, 1, 0, 0),
+                Padding = new Thickness(16, 12, 16, 14),
+                Background = Ui.CorCard
+            };
+            var rodapeStack = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var abrir = Ui.Botao("Abrir pasta dos atalhos", () => Process.Start("explorer.exe", "\"" + Repo.Atalhos + "\""));
+            var pronto = Ui.Botao("Concluído", () => Close(), true);
+            rodapeStack.Children.Add(abrir);
+            rodapeStack.Children.Add(pronto);
+            rodape.Child = rodapeStack;
+
+            Grid.SetRow(cabecalho, 0);
+            Grid.SetRow(corpo, 1);
+            Grid.SetRow(rodape, 2);
+            gridPrincipal.Children.Add(cabecalho);
+            gridPrincipal.Children.Add(corpo);
+            gridPrincipal.Children.Add(rodape);
+
+            moldura.Child = gridPrincipal;
+            Content = moldura;
 
             Atualizar();
             _timer.Tick += (s, e) => Atualizar();
@@ -281,14 +606,16 @@ namespace PastasBarra
             foreach (var l in _linhas)
             {
                 bool fixada = ids.Contains(l.Item1.Id);
-                l.Item2.Text = fixada ? "✓ fixada" : "arraste para a barra";
-                l.Item2.Foreground = fixada ? Brushes.SeaGreen : Brushes.Gray;
+                l.Item2.Background = fixada ? Ui.Pincel("#2010B981") : Ui.Pincel("#10FFFFFF");
+                l.Item3.Text = fixada ? "✓ Fixada" : "Arraste para a barra";
+                l.Item3.Foreground = fixada ? Ui.Pincel("#10B981") : Ui.CorSubtexto;
             }
-            if (_estadoSep != null)
+            if (_badgeSep != null && _txtSep != null)
             {
                 bool fixado = Shell.SeparadorFixado();
-                _estadoSep.Text = fixado ? "✓ fixado" : "arraste para a barra";
-                _estadoSep.Foreground = fixado ? Brushes.SeaGreen : Brushes.Gray;
+                _badgeSep.Background = fixado ? Ui.Pincel("#2010B981") : Ui.Pincel("#10FFFFFF");
+                _txtSep.Text = fixado ? "✓ Fixado" : "Arraste para a barra";
+                _txtSep.Foreground = fixado ? Ui.Pincel("#10B981") : Ui.CorSubtexto;
             }
         }
     }

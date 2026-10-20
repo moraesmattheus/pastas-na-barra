@@ -6,11 +6,12 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 
 namespace PastasBarra
 {
-    // Janelinhas e utilitarios de interface compartilhados.
+    // Design System & utilitarios de interface estilo Windows 11 Fluent UI
     public static class Ui
     {
         public static readonly string[] Cores =
@@ -18,15 +19,55 @@ namespace PastasBarra
             "#475569", "#3B82F6", "#8B5CF6", "#EC4899", "#EF4444", "#F59E0B", "#10B981", "#06B6D4"
         };
 
-        // Fundo do painel: a cor da pasta bem escurecida, para o painel combinar com o icone.
+        // Detecta automaticamente se o usuario usa tema escuro ou claro no Windows
+        public static bool TemaEscuro
+        {
+            get
+            {
+                try
+                {
+                    using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+                    {
+                        if (k != null)
+                        {
+                            var v = k.GetValue("AppsUseLightTheme");
+                            if (v is int val) return val == 0;
+                        }
+                    }
+                }
+                catch { }
+                return true;
+            }
+        }
+
+        // Paleta semantica dinamica que acompanha o tema do Windows
+        public static SolidColorBrush CorTexto { get { return Pincel(TemaEscuro ? "#FFFFFF" : "#0F172A"); } }
+        public static SolidColorBrush CorSubtexto { get { return Pincel(TemaEscuro ? "#94A3B8" : "#64748B"); } }
+        public static SolidColorBrush CorFundoJanela { get { return Pincel(TemaEscuro ? "#F2171922" : "#F8F8FAFC"); } }
+        public static SolidColorBrush CorCard { get { return Pincel(TemaEscuro ? "#18FFFFFF" : "#0A000000"); } }
+        public static SolidColorBrush CorCardHover { get { return Pincel(TemaEscuro ? "#26FFFFFF" : "#14000000"); } }
+        public static SolidColorBrush CorBorda { get { return Pincel(TemaEscuro ? "#24FFFFFF" : "#1E000000"); } }
+        public static SolidColorBrush CorDestaque { get { return Pincel("#3B82F6"); } }
+
+        // Fundo do painel popup (escurecido suave na cor da pasta)
         public static SolidColorBrush FundoPainel(string hex)
         {
             Color c;
             try { c = (Color)ColorConverter.ConvertFromString(hex); } catch { c = Color.FromRgb(71, 85, 105); }
-            Func<byte, byte, byte> mistura = (a, b) => (byte)(a * 0.28 + b * 0.72);
-            var br = new SolidColorBrush(Color.FromArgb(0xEE, mistura(c.R, 0x14), mistura(c.G, 0x16), mistura(c.B, 0x20)));
-            br.Freeze();
-            return br;
+            if (TemaEscuro)
+            {
+                Func<byte, byte, byte> mistura = (a, b) => (byte)(a * 0.28 + b * 0.72);
+                var br = new SolidColorBrush(Color.FromArgb(0xF2, mistura(c.R, 0x14), mistura(c.G, 0x16), mistura(c.B, 0x22)));
+                br.Freeze();
+                return br;
+            }
+            else
+            {
+                Func<byte, byte, byte> mistura = (a, b) => (byte)(a * 0.12 + b * 0.88);
+                var br = new SolidColorBrush(Color.FromArgb(0xF6, mistura(c.R, 0xF8), mistura(c.G, 0xFA), mistura(c.B, 0xFC)));
+                br.Freeze();
+                return br;
+            }
         }
 
         public static SolidColorBrush Pincel(string hex)
@@ -52,51 +93,250 @@ namespace PastasBarra
             return bi;
         }
 
-        static Window Base(Window dono, string titulo, double largura)
+        // ---------- Janela Moderna Windows 11 (sem bordas duras, cantos 16px, sombra suave) ----------
+        public static Window CriarJanelaModerna(Window dono, string titulo, double largura, double altura, out Grid containerCorpo, Action aoFechar = null)
         {
             var w = new Window
             {
                 Title = titulo,
                 Width = largura,
-                SizeToContent = SizeToContent.Height,
-                ResizeMode = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.None,
+                AllowsTransparency = true,
+                Background = Brushes.Transparent,
                 ShowInTaskbar = false,
+                ResizeMode = ResizeMode.NoResize,
                 Topmost = true,
                 WindowStartupLocation = WindowStartupLocation.CenterScreen
             };
+            if (!double.IsNaN(altura)) w.Height = altura;
+            else w.SizeToContent = SizeToContent.Height;
+
             if (dono != null && dono.IsVisible) w.Owner = dono;
+
+            var moldura = new Border
+            {
+                CornerRadius = new CornerRadius(16),
+                Background = CorFundoJanela,
+                BorderBrush = CorBorda,
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(12),
+                Effect = new DropShadowEffect { BlurRadius = 28, ShadowDepth = 6, Opacity = 0.45, Color = Colors.Black }
+            };
+
+            var gridPrincipal = new Grid();
+            gridPrincipal.RowDefinitions.Add(new RowDefinition { Height = new GridLength(42) }); // cabecalho
+            gridPrincipal.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // corpo
+
+            // Cabecalho arrastavel com titulo e botao X
+            var cabecalho = new Grid { Background = Brushes.Transparent, Cursor = Cursors.SizeAll };
+            cabecalho.MouseLeftButtonDown += (s, e) => { if (e.LeftButton == MouseButtonState.Pressed) w.DragMove(); };
+
+            var tituloStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) };
+            
+            // Icone 4 bolinhas
+            var iconeDots = new Canvas { Width = 14, Height = 14, Margin = new Thickness(0, 0, 8, 0) };
+            var coresDots = new[] { "#7DD3FC", "#A78BFA", "#FB923C", "#4ADE80" };
+            for (int i = 0; i < 4; i++)
+            {
+                var el = new System.Windows.Shapes.Ellipse { Width = 6, Height = 6, Fill = Pincel(coresDots[i]) };
+                Canvas.SetLeft(el, (i % 2) * 7);
+                Canvas.SetTop(el, (i / 2) * 7);
+                iconeDots.Children.Add(el);
+            }
+            tituloStack.Children.Add(iconeDots);
+
+            var tbTitulo = new TextBlock
+            {
+                Text = titulo,
+                Foreground = CorTexto,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            tituloStack.Children.Add(tbTitulo);
+            cabecalho.Children.Add(tituloStack);
+
+            // Botao Fechar (X) estilo Windows 11
+            var btnFechar = new Border
+            {
+                Width = 32,
+                Height = 32,
+                CornerRadius = new CornerRadius(8),
+                Background = Brushes.Transparent,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0),
+                Cursor = Cursors.Hand
+            };
+            var txtX = new TextBlock
+            {
+                Text = "\u2715",
+                Foreground = CorSubtexto,
+                FontSize = 12,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            btnFechar.Child = txtX;
+            btnFechar.MouseEnter += (s, e) => { btnFechar.Background = Pincel("#E81123"); txtX.Foreground = Brushes.White; };
+            btnFechar.MouseLeave += (s, e) => { btnFechar.Background = Brushes.Transparent; txtX.Foreground = CorSubtexto; };
+            btnFechar.MouseLeftButtonUp += (s, e) => { if (aoFechar != null) aoFechar(); else w.Close(); };
+            cabecalho.Children.Add(btnFechar);
+
+            containerCorpo = new Grid { Margin = new Thickness(16, 4, 16, 16) };
+            Grid.SetRow(cabecalho, 0);
+            Grid.SetRow(containerCorpo, 1);
+            gridPrincipal.Children.Add(cabecalho);
+            gridPrincipal.Children.Add(containerCorpo);
+
+            moldura.Child = gridPrincipal;
+            w.Content = moldura;
+
+            w.KeyDown += (s, e) => { if (e.Key == Key.Escape) { if (aoFechar != null) aoFechar(); else w.Close(); } };
             return w;
+        }
+
+        // Botao moderno estilo pilula (Fluent UI)
+        public static Border Botao(string texto, Action acao, bool destaque = false, bool perigo = false)
+        {
+            SolidColorBrush bgNormal, bgHover, fgNormal;
+            if (destaque)
+            {
+                bgNormal = Pincel("#2563EB"); bgHover = Pincel("#1D4ED8"); fgNormal = Brushes.White;
+            }
+            else if (perigo)
+            {
+                bgNormal = Pincel(TemaEscuro ? "#33E5484D" : "#1AE5484D");
+                bgHover = Pincel(TemaEscuro ? "#4DE5484D" : "#2EE5484D");
+                fgNormal = Pincel("#EF4444");
+            }
+            else
+            {
+                bgNormal = Pincel(TemaEscuro ? "#1FFFFFFF" : "#0A000000");
+                bgHover = Pincel(TemaEscuro ? "#33FFFFFF" : "#18000000");
+                fgNormal = CorTexto;
+            }
+
+            var b = new Border
+            {
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(14, 8, 14, 8),
+                Margin = new Thickness(4),
+                Background = bgNormal,
+                BorderBrush = CorBorda,
+                BorderThickness = new Thickness(destaque ? 0 : 1),
+                Cursor = Cursors.Hand,
+                Focusable = true
+            };
+            var t = new TextBlock
+            {
+                Text = texto,
+                Foreground = fgNormal,
+                FontSize = 12,
+                FontWeight = destaque ? FontWeights.SemiBold : FontWeights.Normal,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            b.Child = t;
+            b.MouseEnter += (s, e) => b.Background = bgHover;
+            b.MouseLeave += (s, e) => b.Background = bgNormal;
+            b.MouseLeftButtonUp += (s, e) => acao();
+            b.KeyDown += (s, e) => { if (e.Key == Key.Enter || e.Key == Key.Space) { acao(); e.Handled = true; } };
+            return b;
+        }
+
+        // Card com cantos arredondados suave
+        public static Border CriarCard(UIElement conteudo, Thickness? margem = null)
+        {
+            return new Border
+            {
+                CornerRadius = new CornerRadius(12),
+                Background = CorCard,
+                BorderBrush = CorBorda,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(14),
+                Margin = margem ?? new Thickness(0, 0, 0, 10),
+                Child = conteudo
+            };
+        }
+
+        // CheckBox estilizado com suporte dinamico a temas
+        public static CheckBox CaixaSelecao(string texto, bool marcado, Action<bool> aoMudar = null)
+        {
+            var cb = new CheckBox
+            {
+                Content = texto,
+                IsChecked = marcado,
+                Foreground = CorTexto,
+                FontSize = 12.5,
+                Cursor = Cursors.Hand,
+                Margin = new Thickness(0, 4, 0, 4)
+            };
+            if (aoMudar != null)
+            {
+                cb.Click += (s, e) => aoMudar(cb.IsChecked == true);
+            }
+            return cb;
         }
 
         public static string PedirTexto(Window dono, string titulo, string inicial)
         {
-            var w = Base(dono, titulo, 320);
-            var pl = new StackPanel { Margin = new Thickness(14) };
-            var tb = new TextBox { FontSize = 14, Padding = new Thickness(6), Text = inicial ?? "" };
-            var bt = new Button { Content = "OK", Margin = new Thickness(0, 10, 0, 0), Padding = new Thickness(6), IsDefault = true };
-            pl.Children.Add(tb); pl.Children.Add(bt); w.Content = pl;
+            Grid corpo;
+            var w = CriarJanelaModerna(dono, titulo, 360, double.NaN, out corpo);
+            var pl = new StackPanel();
+
+            var tb = new TextBox
+            {
+                FontSize = 14,
+                Padding = new Thickness(10, 8, 10, 8),
+                Text = inicial ?? "",
+                Background = Pincel(TemaEscuro ? "#20FFFFFF" : "#0D000000"),
+                Foreground = CorTexto,
+                BorderBrush = CorBorda,
+                BorderThickness = new Thickness(1)
+            };
+            pl.Children.Add(tb);
+
+            var rodape = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
             string resp = null;
-            bt.Click += (s, e) => { resp = tb.Text.Trim(); w.Close(); };
-            w.KeyDown += (s, e) => { if (e.Key == Key.Escape) w.Close(); };
+            var btnCancelar = Botao("Cancelar", () => w.Close());
+            var btnOk = Botao("Salvar", () => { resp = tb.Text.Trim(); w.Close(); }, true);
+            rodape.Children.Add(btnCancelar);
+            rodape.Children.Add(btnOk);
+            pl.Children.Add(rodape);
+
+            corpo.Children.Add(pl);
             w.ContentRendered += (s, e) => { tb.Focus(); tb.SelectAll(); };
+            w.KeyDown += (s, e) => { if (e.Key == Key.Enter) { resp = tb.Text.Trim(); w.Close(); } };
             w.ShowDialog();
             return string.IsNullOrEmpty(resp) ? null : resp;
         }
 
         public static string EscolherCor(Window dono)
         {
-            var w = Base(dono, "Cor da pasta", 300);
-            var wrap = new WrapPanel { Margin = new Thickness(14) };
+            Grid corpo;
+            var w = CriarJanelaModerna(dono, "Escolha uma cor", 320, double.NaN, out corpo);
+            var wrap = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(4) };
             string resp = null;
             foreach (var c in Cores)
             {
                 var cor = c;
-                var b = new Button { Width = 56, Height = 56, Margin = new Thickness(4), Background = Pincel(cor), BorderThickness = new Thickness(0) };
-                b.Click += (s, e) => { resp = cor; w.Close(); };
+                var b = new Border
+                {
+                    Width = 44,
+                    Height = 44,
+                    Margin = new Thickness(6),
+                    CornerRadius = new CornerRadius(22),
+                    Background = Pincel(cor),
+                    BorderBrush = Brushes.White,
+                    BorderThickness = new Thickness(0),
+                    Cursor = Cursors.Hand
+                };
+                b.MouseEnter += (s, e) => b.BorderThickness = new Thickness(2);
+                b.MouseLeave += (s, e) => b.BorderThickness = new Thickness(0);
+                b.MouseLeftButtonUp += (s, e) => { resp = cor; w.Close(); };
                 wrap.Children.Add(b);
             }
-            w.Content = wrap;
-            w.KeyDown += (s, e) => { if (e.Key == Key.Escape) w.Close(); };
+            corpo.Children.Add(wrap);
             w.ShowDialog();
             return resp;
         }
@@ -104,39 +344,40 @@ namespace PastasBarra
         public static AppItem EscolherApp(Window dono)
         {
             var apps = Shell.ListarApps();
-            var w = new Window
-            {
-                Title = "Adicionar app",
-                Width = 340,
-                Height = 460,
-                Topmost = true,
-                WindowStartupLocation = WindowStartupLocation.CenterScreen
-            };
-            if (dono != null && dono.IsVisible) w.Owner = dono;
+            Grid corpo;
+            var w = CriarJanelaModerna(dono, "Adicionar aplicativo", 380, 520, out corpo);
+
             var g = new Grid();
-            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            var tb = new TextBox { Margin = new Thickness(10), Padding = new Thickness(6), FontSize = 14 };
-            var lb = new ListBox { Margin = new Thickness(10, 0, 10, 0), FontSize = 13, DisplayMemberPath = "Nome" };
-            var bt = new Button { Content = "Adicionar", Margin = new Thickness(10, 10, 5, 10), Padding = new Thickness(14, 6, 14, 6), IsDefault = true };
-            var procurar = new Button { Content = "Procurar no computador...", Margin = new Thickness(5, 10, 10, 10), Padding = new Thickness(14, 6, 14, 6) };
-            var rodape = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-            rodape.Children.Add(procurar); rodape.Children.Add(bt);
-            Grid.SetRow(lb, 1); Grid.SetRow(rodape, 2);
-            g.Children.Add(tb); g.Children.Add(lb); g.Children.Add(rodape);
-            w.Content = g;
-            Action encher = () =>
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Busca
+            g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // Lista
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Rodape
+
+            // Campo de busca moderno
+            var tb = new TextBox
             {
-                string f = tb.Text.Trim();
-                lb.ItemsSource = apps.Where(a => f.Length == 0 || a.Nome.IndexOf(f, StringComparison.CurrentCultureIgnoreCase) >= 0).ToList();
-                if (lb.Items.Count > 0) lb.SelectedIndex = 0;
+                Margin = new Thickness(0, 0, 0, 10),
+                Padding = new Thickness(10, 8, 10, 8),
+                FontSize = 13.5,
+                Background = Pincel(TemaEscuro ? "#20FFFFFF" : "#0D000000"),
+                Foreground = CorTexto,
+                BorderBrush = CorBorda,
+                BorderThickness = new Thickness(1)
             };
-            encher();
-            tb.TextChanged += (s, e) => encher();
+
+            var lb = new ListBox
+            {
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Foreground = CorTexto,
+                FontSize = 13,
+                DisplayMemberPath = "Nome"
+            };
+
+            var rodape = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
             AppItem resp = null;
             Action ok = () => { if (lb.SelectedItem != null) { resp = Shell.NovoItem((StartApp)lb.SelectedItem); w.Close(); } };
-            procurar.Click += (s, e) =>
+
+            var procurar = Botao("Procurar arquivo...", () =>
             {
                 var dlg = new Microsoft.Win32.OpenFileDialog
                 {
@@ -145,15 +386,37 @@ namespace PastasBarra
                     DereferenceLinks = false
                 };
                 if (dlg.ShowDialog(w) == true) { resp = Shell.NovoItemArquivo(dlg.FileName); w.Close(); }
+            });
+
+            var btnAdicionar = Botao("Adicionar", ok, true);
+            rodape.Children.Add(procurar);
+            rodape.Children.Add(btnAdicionar);
+
+            Grid.SetRow(tb, 0);
+            Grid.SetRow(lb, 1);
+            Grid.SetRow(rodape, 2);
+            g.Children.Add(tb);
+            g.Children.Add(lb);
+            g.Children.Add(rodape);
+            corpo.Children.Add(g);
+
+            Action encher = () =>
+            {
+                string f = tb.Text.Trim();
+                lb.ItemsSource = apps.Where(a => f.Length == 0 || a.Nome.IndexOf(f, StringComparison.CurrentCultureIgnoreCase) >= 0).ToList();
+                if (lb.Items.Count > 0) lb.SelectedIndex = 0;
             };
-            bt.Click += (s, e) => ok();
+            encher();
+            tb.TextChanged += (s, e) => encher();
+
             lb.MouseDoubleClick += (s, e) => ok();
             w.KeyDown += (s, e) =>
             {
-                if (e.Key == Key.Escape) w.Close();
+                if (e.Key == Key.Enter && lb.SelectedItem != null) ok();
                 else if (e.Key == Key.Down && lb.SelectedIndex < lb.Items.Count - 1) lb.SelectedIndex++;
                 else if (e.Key == Key.Up && lb.SelectedIndex > 0) lb.SelectedIndex--;
             };
+
             w.ContentRendered += (s, e) => tb.Focus();
             w.ShowDialog();
             return resp;
