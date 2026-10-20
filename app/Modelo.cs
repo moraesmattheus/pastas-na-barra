@@ -27,6 +27,19 @@ namespace PastasBarra
         public List<AppItem> Apps = new List<AppItem>();
     }
 
+    public class ItemUsoApp
+    {
+        public string Nome;
+        public string Processo;
+        public int Segundos;
+    }
+
+    public class RegistroDiaUso
+    {
+        public string Data; // "yyyy-MM-dd"
+        public List<ItemUsoApp> Apps = new List<ItemUsoApp>();
+    }
+
     public class Dados
     {
         public bool PrimeiraVezConcluida;
@@ -38,6 +51,8 @@ namespace PastasBarra
         public int OpacidadeVidro = 85;         // 70 a 100
         public bool BiselVidro = true;          // borda reflexiva com efeito bisel
         public int CantosArredondados = 18;     // 12, 18, 24
+        public bool RastrearTempo = true;       // modo reflexao / foco de tempo
+        public List<RegistroDiaUso> HistoricoUso = new List<RegistroDiaUso>();
         public List<Pasta> Pastas = new List<Pasta>();
     }
 
@@ -63,6 +78,7 @@ namespace PastasBarra
                     if (Dados.OpacidadeVidro < 50 || Dados.OpacidadeVidro > 100) Dados.OpacidadeVidro = 85;
                     if (Dados.CantosArredondados <= 0) Dados.CantosArredondados = 18;
                     if (string.IsNullOrEmpty(Dados.EstiloVisual)) Dados.EstiloVisual = "Vidro";
+                    if (Dados.HistoricoUso == null) Dados.HistoricoUso = new List<RegistroDiaUso>();
                     MigrarCores();
                 }
             }

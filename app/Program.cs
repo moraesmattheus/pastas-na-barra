@@ -25,6 +25,7 @@ namespace PastasBarra
         public static void Executar(string abrir, bool bandeja, string[] soltos)
         {
             Repo.Carregar();
+            RastreadorTempo.Iniciar();
             _app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             _app.DispatcherUnhandledException += (s, e) =>
             {
@@ -65,10 +66,12 @@ namespace PastasBarra
             _tray.Visible = false;
             _tray.Dispose();
             if (_hTrayIcon != IntPtr.Zero) { try { DestroyIcon(_hTrayIcon); } catch { } _hTrayIcon = IntPtr.Zero; }
+            RastreadorTempo.Parar();
         }
 
         public static void Sair()
         {
+            RastreadorTempo.Parar();
             if (_app != null)
                 _app.Dispatcher.BeginInvoke(new Action(() => _app.Shutdown()));
         }

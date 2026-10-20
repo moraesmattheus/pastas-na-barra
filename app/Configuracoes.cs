@@ -12,25 +12,30 @@ using System.Windows.Shapes;
 
 namespace PastasBarra
 {
-    // Janela de configuracoes moderna estilo Windows 11 Fluent UI com personalizacao visual e efeito vidro
+    // Janela de configuracoes moderna estilo Windows 11 Fluent UI:
+    // Pastas, Aparencia & Vidro e Modo Reflexao / Foco de Tempo
     public class ConfiguracoesJanela : Window
     {
         readonly StackPanel _containerCards = new StackPanel();
         readonly Grid _painelPastas = new Grid();
         readonly Grid _painelAparencia = new Grid();
+        readonly Grid _painelReflexao = new Grid();
+
         readonly Border _abaPastasBtn;
         readonly Border _abaAparenciaBtn;
+        readonly Border _abaReflexaoBtn;
+
         readonly Border _previewCard = new Border();
         readonly TextBlock _previewTxtOpacidade = new TextBlock();
 
         Pasta _selecionada;
-        bool _abaAparenciaAtiva = false;
+        int _abaAtiva = 0; // 0 = Pastas, 1 = Aparencia, 2 = Reflexao
 
         public ConfiguracoesJanela()
         {
             Title = "Pastas na barra · Configurações";
-            Width = 660;
-            Height = 620;
+            Width = 680;
+            Height = 640;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             WindowStyle = WindowStyle.None;
             AllowsTransparency = true;
@@ -106,20 +111,26 @@ namespace PastasBarra
             btnFechar.MouseLeftButtonUp += (s, e) => Close();
             cabecalho.Children.Add(btnFechar);
 
-            // Abas de navegacao: [ 📁 Minhas Pastas ] e [ ✨ Aparência & Vidro ]
+            // Abas de navegacao: [ 📁 Minhas Pastas ] [ ✨ Aparência & Vidro ] [ 📊 Reflexão & Foco ]
             var barraAbas = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(16, 0, 16, 4) };
-            _abaPastasBtn = CriarBotaoAba("📁  Minhas Pastas", true, () => AlternarAba(false));
-            _abaAparenciaBtn = CriarBotaoAba("✨  Aparência & Vidro", false, () => AlternarAba(true));
+            _abaPastasBtn = CriarBotaoAba("📁  Minhas Pastas", true, () => AlternarAba(0));
+            _abaAparenciaBtn = CriarBotaoAba("✨  Aparência & Vidro", false, () => AlternarAba(1));
+            _abaReflexaoBtn = CriarBotaoAba("📊  Reflexão & Foco", false, () => AlternarAba(2));
             barraAbas.Children.Add(_abaPastasBtn);
             barraAbas.Children.Add(_abaAparenciaBtn);
+            barraAbas.Children.Add(_abaReflexaoBtn);
 
-            // Container do corpo (alterna entre pastas e aparencia)
+            // Container do corpo (alterna entre as 3 abas)
             var containerCorpo = new Grid { Margin = new Thickness(16, 4, 16, 10) };
             MontarPainelPastas();
             MontarPainelAparencia();
+            MontarPainelReflexao();
+
             containerCorpo.Children.Add(_painelPastas);
             containerCorpo.Children.Add(_painelAparencia);
+            containerCorpo.Children.Add(_painelReflexao);
             _painelAparencia.Visibility = Visibility.Collapsed;
+            _painelReflexao.Visibility = Visibility.Collapsed;
 
             // Rodape
             var rodape = new Border
@@ -198,15 +209,23 @@ namespace PastasBarra
             return b;
         }
 
-        void AlternarAba(bool paraAparencia)
+        void AlternarAba(int indice)
         {
-            _abaAparenciaAtiva = paraAparencia;
-            _painelPastas.Visibility = paraAparencia ? Visibility.Collapsed : Visibility.Visible;
-            _painelAparencia.Visibility = paraAparencia ? Visibility.Visible : Visibility.Collapsed;
+            _abaAtiva = indice;
+            _painelPastas.Visibility = indice == 0 ? Visibility.Visible : Visibility.Collapsed;
+            _painelAparencia.Visibility = indice == 1 ? Visibility.Visible : Visibility.Collapsed;
+            _painelReflexao.Visibility = indice == 2 ? Visibility.Visible : Visibility.Collapsed;
 
-            AtualizarEstiloAba(_abaPastasBtn, !paraAparencia);
-            AtualizarEstiloAba(_abaAparenciaBtn, paraAparencia);
-            if (paraAparencia) AtualizarPreview();
+            AtualizarEstiloAba(_abaPastasBtn, indice == 0);
+            AtualizarEstiloAba(_abaAparenciaBtn, indice == 1);
+            AtualizarEstiloAba(_abaReflexaoBtn, indice == 2);
+
+            if (indice == 1) AtualizarPreview();
+            if (indice == 2)
+            {
+                RastreadorTempo.SalvarParcial();
+                MontarPainelReflexaoRecarregar();
+            }
         }
 
         void AtualizarEstiloAba(Border b, bool ativo)
@@ -228,7 +247,6 @@ namespace PastasBarra
             _painelPastas.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             _painelPastas.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(190) });
 
-            // Lado esquerdo: lista de pastas
             var painelEsquerdo = new Grid();
             painelEsquerdo.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             painelEsquerdo.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -243,7 +261,6 @@ namespace PastasBarra
             painelEsquerdo.Children.Add(scroll);
             _painelPastas.Children.Add(painelEsquerdo);
 
-            // Lado direito: Botoes de acao
             var botoes = new StackPanel { VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(6, 32, 0, 0) };
             Grid.SetColumn(botoes, 1);
 
@@ -272,7 +289,6 @@ namespace PastasBarra
             _painelAparencia.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.1, GridUnitType.Star) });
             _painelAparencia.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.9, GridUnitType.Star) });
 
-            // Lado esquerdo: Controles visuais
             var scrollControles = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 0, 14, 0) };
             var stackControles = new StackPanel();
 
@@ -288,7 +304,7 @@ namespace PastasBarra
             };
             var stEstilo = new StackPanel();
             stEstilo.Children.Add(new TextBlock { Text = "Material do Fundo", FontSize = 13.5, FontWeight = FontWeights.SemiBold, Foreground = Ui.CorTexto });
-            stEstilo.Children.Add(new TextBlock { Text = "Acrílico com desfoque de fundo (Windows 11) ou acetinado sólido.", FontSize = 11, Foreground = Ui.CorSubtexto, Margin = new Thickness(0, 2, 0, 8), TextWrapping = TextWrapping.Wrap });
+            stEstilo.Children.Add(new TextBlock { Text = "Acrílico com desfoque de fundo (Windows 11) ou acabamento sólido.", FontSize = 11, Foreground = Ui.CorSubtexto, Margin = new Thickness(0, 2, 0, 8), TextWrapping = TextWrapping.Wrap });
 
             var rowEstilos = new StackPanel { Orientation = Orientation.Horizontal };
             var btnVidro = Ui.Botao("💎 Vidro Acrílico (Frosted)", () =>
@@ -493,6 +509,202 @@ namespace PastasBarra
             _previewCard.BorderBrush = Ui.BordaPainel();
             _previewCard.BorderThickness = new Thickness(1);
             _previewCard.Effect = Ui.SombraProfundidade;
+        }
+
+        // ---------- ABA 3: REFLEXÃO & FOCO DE TEMPO ----------
+        void MontarPainelReflexao()
+        {
+            _painelReflexao.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // cabecalho reflexao
+            _painelReflexao.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // lista apps
+            _painelReflexao.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // insight
+
+            // Cabecalho da Reflexao
+            var cardCab = new Border
+            {
+                CornerRadius = new CornerRadius(10),
+                Background = Ui.CorCard,
+                BorderBrush = Ui.CorBorda,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(14, 10, 14, 10),
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            var gridCab = new Grid();
+            gridCab.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            gridCab.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var titStack = new StackPanel();
+            titStack.Children.Add(new TextBlock { Text = "Reflexão & Tempo de Foco", FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = Ui.CorTexto });
+            titStack.Children.Add(new TextBlock { Text = "Acompanhe onde seu tempo foi investido hoje. 100% privado no seu computador.", FontSize = 11.5, Foreground = Ui.CorSubtexto, Margin = new Thickness(0, 2, 0, 0) });
+            gridCab.Children.Add(titStack);
+
+            var toggleRastrear = Ui.CaixaSelecao("Ativar rastreamento", Repo.Dados.RastrearTempo, v =>
+            {
+                Repo.Dados.RastrearTempo = v;
+                if (v) RastreadorTempo.Iniciar();
+                else RastreadorTempo.Parar();
+                Repo.Salvar();
+                MontarPainelReflexaoRecarregar();
+            });
+            toggleRastrear.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(toggleRastrear, 1);
+            gridCab.Children.Add(toggleRastrear);
+            cardCab.Child = gridCab;
+            _painelReflexao.Children.Add(cardCab);
+
+            if (!Repo.Dados.RastrearTempo)
+            {
+                var avisoDesativado = new TextBlock
+                {
+                    Text = "O rastreamento de foco está desativado.\nMarque 'Ativar rastreamento' acima para começar a registrar o tempo dos aplicativos.",
+                    Foreground = Ui.CorSubtexto,
+                    FontSize = 13,
+                    TextAlignment = TextAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(20)
+                };
+                Grid.SetRow(avisoDesativado, 1);
+                _painelReflexao.Children.Add(avisoDesativado);
+                return;
+            }
+
+            // Dados de hoje
+            var diaHoje = DateTime.Today.ToString("yyyy-MM-dd");
+            var registroDia = Repo.Dados.HistoricoUso.FirstOrDefault(d => d.Data == diaHoje);
+
+            if (registroDia == null || registroDia.Apps.Count == 0)
+            {
+                var vazio = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
+                vazio.Children.Add(new TextBlock { Text = "🌱", FontSize = 32, HorizontalAlignment = HorizontalAlignment.Center });
+                vazio.Children.Add(new TextBlock
+                {
+                    Text = "Comece seu dia!\nConforme você alternar entre seus programas, seu resumo de foco aparecerá aqui.",
+                    Foreground = Ui.CorSubtexto,
+                    FontSize = 12.5,
+                    TextAlignment = TextAlignment.Center,
+                    Margin = new Thickness(0, 8, 0, 0)
+                });
+                Grid.SetRow(vazio, 1);
+                _painelReflexao.Children.Add(vazio);
+                return;
+            }
+
+            var appsOrdenados = registroDia.Apps.OrderByDescending(a => a.Segundos).ToList();
+            int totalSegundos = appsOrdenados.Sum(a => a.Segundos);
+            int maiorSegundos = appsOrdenados.First().Segundos;
+
+            var stackLista = new StackPanel();
+
+            // Cartao de resumo do dia
+            var cardTotal = new Border
+            {
+                CornerRadius = new CornerRadius(10),
+                Background = Ui.Pincel(Ui.TemaEscuro ? "#203B82F6" : "#123B82F6"),
+                BorderBrush = Ui.Pincel("#3B82F6"),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(14, 10, 14, 10),
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            var stTotal = new StackPanel { Orientation = Orientation.Horizontal };
+            stTotal.Children.Add(new TextBlock { Text = "⏱️ Tempo ativo hoje: ", FontSize = 13, Foreground = Ui.CorTexto, FontWeight = FontWeights.SemiBold });
+            stTotal.Children.Add(new TextBlock { Text = RastreadorTempo.FormatarTempo(totalSegundos), FontSize = 13.5, FontWeight = FontWeights.Bold, Foreground = Ui.CorDestaque });
+            stTotal.Children.Add(new TextBlock { Text = "  ·  " + appsOrdenados.Count + " aplicativos", FontSize = 12, Foreground = Ui.CorSubtexto, VerticalAlignment = VerticalAlignment.Center });
+            cardTotal.Child = stTotal;
+            stackLista.Children.Add(cardTotal);
+
+            // Linhas dos aplicativos com barras de progresso proporcionais
+            foreach (var app in appsOrdenados.Take(7))
+            {
+                var itemApp = app;
+                double proporcao = maiorSegundos > 0 ? (double)itemApp.Segundos / maiorSegundos : 0;
+                double percentualTotal = totalSegundos > 0 ? ((double)itemApp.Segundos / totalSegundos) * 100 : 0;
+
+                var cardLinha = new Border
+                {
+                    CornerRadius = new CornerRadius(8),
+                    Background = Ui.CorCard,
+                    BorderBrush = Ui.CorBorda,
+                    BorderThickness = new Thickness(1),
+                    Padding = new Thickness(12, 8, 12, 8),
+                    Margin = new Thickness(0, 0, 0, 6)
+                };
+
+                var gItem = new Grid();
+                gItem.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                gItem.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+                var topoItem = new Grid();
+                topoItem.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                topoItem.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var nomeStack = new StackPanel { Orientation = Orientation.Horizontal };
+                nomeStack.Children.Add(new TextBlock { Text = itemApp.Nome, FontSize = 12.5, FontWeight = FontWeights.SemiBold, Foreground = Ui.CorTexto });
+                nomeStack.Children.Add(new TextBlock { Text = " (" + itemApp.Processo + ")", FontSize = 11, Foreground = Ui.CorSubtexto, Margin = new Thickness(4, 1, 0, 0) });
+                topoItem.Children.Add(nomeStack);
+
+                var tempoStack = new StackPanel { Orientation = Orientation.Horizontal };
+                Grid.SetColumn(tempoStack, 1);
+                tempoStack.Children.Add(new TextBlock { Text = RastreadorTempo.FormatarTempo(itemApp.Segundos), FontSize = 12, FontWeight = FontWeights.Bold, Foreground = Ui.CorDestaque });
+                tempoStack.Children.Add(new TextBlock { Text = "  " + Math.Round(percentualTotal) + "%", FontSize = 11, Foreground = Ui.CorSubtexto, Margin = new Thickness(2, 1, 0, 0) });
+                topoItem.Children.Add(tempoStack);
+                gItem.Children.Add(topoItem);
+
+                // Barra de progresso visual
+                var barraTrilho = new Border
+                {
+                    Height = 4,
+                    CornerRadius = new CornerRadius(2),
+                    Background = Ui.Pincel(Ui.TemaEscuro ? "#20FFFFFF" : "#12000000"),
+                    Margin = new Thickness(0, 6, 0, 0)
+                };
+                var barraProgresso = new Border
+                {
+                    Height = 4,
+                    CornerRadius = new CornerRadius(2),
+                    Background = Ui.CorDestaque,
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Width = Math.Max(12, 380 * proporcao)
+                };
+                barraTrilho.Child = barraProgresso;
+                Grid.SetRow(barraTrilho, 1);
+                gItem.Children.Add(barraTrilho);
+
+                cardLinha.Child = gItem;
+                stackLista.Children.Add(cardLinha);
+            }
+
+            var scrollReflexao = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = stackLista, Margin = new Thickness(0, 0, 0, 8) };
+            Grid.SetRow(scrollReflexao, 1);
+            _painelReflexao.Children.Add(scrollReflexao);
+
+            // Dica de insight no rodape
+            var topApp = appsOrdenados.First();
+            var cardInsight = new Border
+            {
+                CornerRadius = new CornerRadius(8),
+                Background = Ui.CorCardHover,
+                BorderBrush = Ui.CorBorda,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(12, 8, 12, 8)
+            };
+            var stInsight = new StackPanel { Orientation = Orientation.Horizontal };
+            stInsight.Children.Add(new TextBlock { Text = "💡 ", FontSize = 13 });
+            stInsight.Children.Add(new TextBlock
+            {
+                Text = "Mais utilizado hoje: " + topApp.Nome + " (" + RastreadorTempo.FormatarTempo(topApp.Segundos) + "). Dica: fixe-o em uma pasta para abrir instantaneamente.",
+                FontSize = 11.5,
+                Foreground = Ui.CorSubtexto,
+                TextWrapping = TextWrapping.Wrap
+            });
+            cardInsight.Child = stInsight;
+            Grid.SetRow(cardInsight, 2);
+            _painelReflexao.Children.Add(cardInsight);
+        }
+
+        void MontarPainelReflexaoRecarregar()
+        {
+            _painelReflexao.Children.Clear();
+            _painelReflexao.RowDefinitions.Clear();
+            MontarPainelReflexao();
         }
 
         Pasta Selecionada
