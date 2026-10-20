@@ -621,6 +621,65 @@ namespace PastasBarra
         [DllImport("shell32.dll")]
         static extern void SHChangeNotify(uint wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
 
+        [ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IPropertyStore
+        {
+            void GetCount(out uint cProps);
+            void GetAt(uint iProp, out PROPERTYKEY pkey);
+            void GetValue(ref PROPERTYKEY key, out PROPVARIANT pv);
+            void SetValue(ref PROPERTYKEY key, ref PROPVARIANT propvar);
+            void Commit();
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 4)]
+        struct PROPERTYKEY
+        {
+            public Guid fmtid;
+            public uint pid;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        struct PROPVARIANT
+        {
+            [FieldOffset(0)] public ushort vt;
+            [FieldOffset(8)] public IntPtr pwszVal;
+        }
+
+        [DllImport("shell32.dll", SetLastError = true)]
+        static extern int SHGetPropertyStoreForWindow(IntPtr hwnd, ref Guid riid, out IPropertyStore ppv);
+
+        public static void DefinirAppIdJanela(IntPtr hwnd, string appId)
+        {
+            try
+            {
+                var guid = new Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99");
+                IPropertyStore store;
+                if (SHGetPropertyStoreForWindow(hwnd, ref guid, out store) == 0 && store != null)
+                {
+                    var pkey = new PROPERTYKEY
+                    {
+                        fmtid = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"),
+                        pid = 5
+                    };
+                    var pv = new PROPVARIANT
+                    {
+                        vt = 31, // VT_LPWSTR
+                        pwszVal = Marshal.StringToCoTaskMemUni(appId)
+                    };
+                    try
+                    {
+                        store.SetValue(ref pkey, ref pv);
+                        store.Commit();
+                    }
+                    finally
+                    {
+                        Marshal.FreeCoTaskMem(pv.pwszVal);
+                    }
+                }
+            }
+            catch { }
+        }
+
         public static void NotificarShell()
         {
             try { SHChangeNotify(0x08000000 /* SHCNE_ASSOCCHANGED */, 0 /* SHCNF_IDLIST */, IntPtr.Zero, IntPtr.Zero); } catch { }

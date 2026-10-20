@@ -205,8 +205,17 @@ namespace PastasBarra
         // ---------- janelas ----------
         static void Unica(ref Window w, Func<Window> criar)
         {
-            if (w != null && w.IsVisible) { w.Activate(); return; }
+            if (w != null && w.IsVisible)
+            {
+                if (w.WindowState == WindowState.Minimized)
+                    w.WindowState = WindowState.Normal;
+                w.Activate();
+                w.Focus();
+                return;
+            }
             w = criar();
+            var capturado = w;
+            capturado.Closed += (s, e) => { if (_config == capturado) _config = null; if (_assistente == capturado) _assistente = null; if (_fixar == capturado) _fixar = null; };
             w.Show();
             w.Activate();
         }

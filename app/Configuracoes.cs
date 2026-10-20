@@ -6,6 +6,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
@@ -25,8 +26,12 @@ namespace PastasBarra
         readonly Border _abaAparenciaBtn;
         readonly Border _abaReflexaoBtn;
 
-        readonly Border _previewCard = new Border();
-        readonly TextBlock _previewTxtOpacidade = new TextBlock();
+        Border _previewCard;
+        TextBlock _previewTxtOpacidade;
+
+        Border _btnVidro;
+        Border _btnSolido;
+        readonly List<Tuple<int, Border>> _botoesCantos = new List<Tuple<int, Border>>();
 
         Pasta _selecionada;
         int _abaAtiva = 0; // 0 = Pastas, 1 = Aparencia, 2 = Reflexao
@@ -40,8 +45,19 @@ namespace PastasBarra
             WindowStyle = WindowStyle.None;
             AllowsTransparency = true;
             Background = Brushes.Transparent;
-            ShowInTaskbar = false;
-            ResizeMode = ResizeMode.NoResize;
+            ShowInTaskbar = true;
+            ResizeMode = ResizeMode.CanMinimize;
+
+            // Define AppUserModelID unico para a janela de configuracoes nao agrupar com pastas da barra
+            SourceInitialized += (s, e) =>
+            {
+                try
+                {
+                    var hwnd = new WindowInteropHelper(this).Handle;
+                    if (hwnd != IntPtr.Zero) Shell.DefinirAppIdJanela(hwnd, "PastasBarra.Configuracoes");
+                }
+                catch { }
+            };
 
             KeyDown += (s, e) => { if (e.Key == Key.Escape) Close(); };
 
@@ -61,7 +77,7 @@ namespace PastasBarra
             gridPrincipal.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // corpo
             gridPrincipal.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // rodape
 
-            // Cabecalho arrastavel com titulo e fechar
+            // Cabecalho arrastavel com titulo, minimizar e fechar
             var cabecalho = new Grid { Background = Brushes.Transparent, Cursor = Cursors.SizeAll };
             cabecalho.MouseLeftButtonDown += (s, e) => { if (e.LeftButton == MouseButtonState.Pressed) DragMove(); };
 
@@ -86,30 +102,31 @@ namespace PastasBarra
             });
             cabecalho.Children.Add(tituloStack);
 
+            // Botoes minimizar e fechar estilo Windows 11
+            var botoesCabecalho = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+
+            var btnMinimizar = new Border
+            {
+                Width = 32, Height = 32, CornerRadius = new CornerRadius(8), Background = Brushes.Transparent, Cursor = Cursors.Hand,
+                Child = new TextBlock { Text = "—", Foreground = Ui.CorSubtexto, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
+            };
+            btnMinimizar.MouseEnter += (s, e) => btnMinimizar.Background = Ui.CorCardHover;
+            btnMinimizar.MouseLeave += (s, e) => btnMinimizar.Background = Brushes.Transparent;
+            btnMinimizar.MouseLeftButtonUp += (s, e) => WindowState = WindowState.Minimized;
+            botoesCabecalho.Children.Add(btnMinimizar);
+
             var btnFechar = new Border
             {
-                Width = 32,
-                Height = 32,
-                CornerRadius = new CornerRadius(8),
-                Background = Brushes.Transparent,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 8, 0),
-                Cursor = Cursors.Hand
+                Width = 32, Height = 32, CornerRadius = new CornerRadius(8), Background = Brushes.Transparent, Cursor = Cursors.Hand,
+                Child = new TextBlock { Text = "✕", Foreground = Ui.CorSubtexto, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
             };
-            var txtX = new TextBlock
-            {
-                Text = "\u2715",
-                Foreground = Ui.CorSubtexto,
-                FontSize = 12,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            btnFechar.Child = txtX;
+            var txtX = (TextBlock)btnFechar.Child;
             btnFechar.MouseEnter += (s, e) => { btnFechar.Background = Ui.Pincel("#E81123"); txtX.Foreground = Brushes.White; };
             btnFechar.MouseLeave += (s, e) => { btnFechar.Background = Brushes.Transparent; txtX.Foreground = Ui.CorSubtexto; };
             btnFechar.MouseLeftButtonUp += (s, e) => Close();
-            cabecalho.Children.Add(btnFechar);
+            botoesCabecalho.Children.Add(btnFechar);
+
+            cabecalho.Children.Add(botoesCabecalho);
 
             // Abas de navegacao: [ 📁 Minhas Pastas ] [ ✨ Aparência & Vidro ] [ 📊 Reflexão & Foco ]
             var barraAbas = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(16, 0, 16, 4) };
@@ -120,7 +137,7 @@ namespace PastasBarra
             barraAbas.Children.Add(_abaAparenciaBtn);
             barraAbas.Children.Add(_abaReflexaoBtn);
 
-            // Container do corpo (alterna entre as 3 abas)
+            // Container do corpo (alterna entre as 3 abas sem destruicao de arvore)
             var containerCorpo = new Grid { Margin = new Thickness(16, 4, 16, 10) };
             MontarPainelPastas();
             MontarPainelAparencia();
@@ -304,25 +321,27 @@ namespace PastasBarra
             };
             var stEstilo = new StackPanel();
             stEstilo.Children.Add(new TextBlock { Text = "Material do Fundo", FontSize = 13.5, FontWeight = FontWeights.SemiBold, Foreground = Ui.CorTexto });
-            stEstilo.Children.Add(new TextBlock { Text = "Acrílico com desfoque de fundo (Windows 11) ou acabamento sólido.", FontSize = 11, Foreground = Ui.CorSubtexto, Margin = new Thickness(0, 2, 0, 8), TextWrapping = TextWrapping.Wrap });
+            stEstilo.Children.Add(new TextBlock { Text = "Translúcido com leve passagem de luz ou acetinado sólido.", FontSize = 11, Foreground = Ui.CorSubtexto, Margin = new Thickness(0, 2, 0, 8), TextWrapping = TextWrapping.Wrap });
 
             var rowEstilos = new StackPanel { Orientation = Orientation.Horizontal };
-            var btnVidro = Ui.Botao("💎 Vidro Acrílico (Frosted)", () =>
+            _btnVidro = Ui.Botao("💎 Vidro Translúcido", () =>
             {
                 Repo.Dados.EstiloVisual = "Vidro";
                 Repo.Salvar();
-                MontarPainelAparenciaRecarregar();
+                AtualizarBotoesEstilo();
+                AtualizarPreview();
             }, Repo.Dados.EstiloVisual != "Solido");
 
-            var btnSolido = Ui.Botao("🏛 Sólido Acetinado", () =>
+            _btnSolido = Ui.Botao("🏛 Sólido Acetinado", () =>
             {
                 Repo.Dados.EstiloVisual = "Solido";
                 Repo.Salvar();
-                MontarPainelAparenciaRecarregar();
+                AtualizarBotoesEstilo();
+                AtualizarPreview();
             }, Repo.Dados.EstiloVisual == "Solido");
 
-            rowEstilos.Children.Add(btnVidro);
-            rowEstilos.Children.Add(btnSolido);
+            rowEstilos.Children.Add(_btnVidro);
+            rowEstilos.Children.Add(_btnSolido);
             stEstilo.Children.Add(rowEstilos);
             cardEstilo.Child = stEstilo;
             stackControles.Children.Add(cardEstilo);
@@ -343,10 +362,13 @@ namespace PastasBarra
             topoOpac.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var titOpac = new TextBlock { Text = "Nível de Transparência", FontSize = 13.5, FontWeight = FontWeights.SemiBold, Foreground = Ui.CorTexto };
-            _previewTxtOpacidade.Text = Repo.Dados.OpacidadeVidro + "%";
-            _previewTxtOpacidade.FontSize = 13;
-            _previewTxtOpacidade.FontWeight = FontWeights.Bold;
-            _previewTxtOpacidade.Foreground = Ui.CorDestaque;
+            _previewTxtOpacidade = new TextBlock
+            {
+                Text = Repo.Dados.OpacidadeVidro + "%",
+                FontSize = 13,
+                FontWeight = FontWeights.Bold,
+                Foreground = Ui.CorDestaque
+            };
             Grid.SetColumn(_previewTxtOpacidade, 1);
             topoOpac.Children.Add(titOpac);
             topoOpac.Children.Add(_previewTxtOpacidade);
@@ -367,7 +389,7 @@ namespace PastasBarra
             {
                 int val = (int)Math.Round(slider.Value);
                 Repo.Dados.OpacidadeVidro = val;
-                _previewTxtOpacidade.Text = val + "%";
+                if (_previewTxtOpacidade != null) _previewTxtOpacidade.Text = val + "%";
                 Repo.Salvar();
                 AtualizarPreview();
             };
@@ -413,9 +435,23 @@ namespace PastasBarra
             stCantos.Children.Add(new TextBlock { Text = "Ajuste o raio de arredondamento das bordas das janelas.", FontSize = 11, Foreground = Ui.CorSubtexto, Margin = new Thickness(0, 2, 0, 8) });
 
             var rowCantos = new StackPanel { Orientation = Orientation.Horizontal };
-            rowCantos.Children.Add(Ui.Botao("Compacto (12px)", () => { Repo.Dados.CantosArredondados = 12; Repo.Salvar(); MontarPainelAparenciaRecarregar(); }, Repo.Dados.CantosArredondados == 12));
-            rowCantos.Children.Add(Ui.Botao("Padrão (18px)", () => { Repo.Dados.CantosArredondados = 18; Repo.Salvar(); MontarPainelAparenciaRecarregar(); }, Repo.Dados.CantosArredondados == 18));
-            rowCantos.Children.Add(Ui.Botao("Suave (24px)", () => { Repo.Dados.CantosArredondados = 24; Repo.Salvar(); MontarPainelAparenciaRecarregar(); }, Repo.Dados.CantosArredondados == 24));
+            _botoesCantos.Clear();
+            Action<int, string> addOpcaoCanto = (raio, label) =>
+            {
+                var btn = Ui.Botao(label, () =>
+                {
+                    Repo.Dados.CantosArredondados = raio;
+                    Repo.Salvar();
+                    AtualizarBotoesCantos();
+                    AtualizarPreview();
+                }, Repo.Dados.CantosArredondados == raio);
+                _botoesCantos.Add(Tuple.Create(raio, btn));
+                rowCantos.Children.Add(btn);
+            };
+            addOpcaoCanto(12, "Compacto (12px)");
+            addOpcaoCanto(18, "Padrão (18px)");
+            addOpcaoCanto(24, "Suave (24px)");
+
             stCantos.Children.Add(rowCantos);
             cardCantos.Child = stCantos;
             stackControles.Children.Add(cardCantos);
@@ -437,9 +473,12 @@ namespace PastasBarra
                 Margin = new Thickness(0, 0, 0, 12)
             });
 
-            _previewCard.Width = 240;
-            _previewCard.Padding = new Thickness(14);
-            _previewCard.HorizontalAlignment = HorizontalAlignment.Center;
+            _previewCard = new Border
+            {
+                Width = 240,
+                Padding = new Thickness(14),
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
 
             var stPreview = new StackPanel();
             stPreview.Children.Add(new TextBlock
@@ -495,15 +534,37 @@ namespace PastasBarra
             AtualizarPreview();
         }
 
-        void MontarPainelAparenciaRecarregar()
+        void AtualizarBotoesEstilo()
         {
-            _painelAparencia.Children.Clear();
-            _painelAparencia.ColumnDefinitions.Clear();
-            MontarPainelAparencia();
+            bool solido = Repo.Dados.EstiloVisual == "Solido";
+            DefinirDestaqueBotao(_btnVidro, !solido);
+            DefinirDestaqueBotao(_btnSolido, solido);
+        }
+
+        void AtualizarBotoesCantos()
+        {
+            foreach (var item in _botoesCantos)
+            {
+                DefinirDestaqueBotao(item.Item2, Repo.Dados.CantosArredondados == item.Item1);
+            }
+        }
+
+        void DefinirDestaqueBotao(Border b, bool destaque)
+        {
+            if (b == null) return;
+            b.Background = destaque ? Ui.Pincel("#2563EB") : Ui.Pincel(Ui.TemaEscuro ? "#1FFFFFFF" : "#0A000000");
+            b.BorderThickness = new Thickness(destaque ? 0 : 1);
+            var t = b.Child as TextBlock;
+            if (t != null)
+            {
+                t.Foreground = destaque ? Brushes.White : Ui.CorTexto;
+                t.FontWeight = destaque ? FontWeights.SemiBold : FontWeights.Normal;
+            }
         }
 
         void AtualizarPreview()
         {
+            if (_previewCard == null) return;
             _previewCard.CornerRadius = Ui.CantosPainel;
             _previewCard.Background = Ui.FundoPainel("#3B82F6");
             _previewCard.BorderBrush = Ui.BordaPainel();
@@ -709,13 +770,32 @@ namespace PastasBarra
 
         Pasta Selecionada
         {
-            get { return _selecionada ?? Repo.Dados.Pastas.FirstOrDefault(); }
+            get
+            {
+                if (_selecionada != null && Repo.Dados.Pastas.Any(p => p.Id == _selecionada.Id))
+                    return _selecionada;
+                return Repo.Dados.Pastas.FirstOrDefault();
+            }
         }
 
         void Recarregar()
         {
             var idSel = Selecionada != null ? Selecionada.Id : null;
             _containerCards.Children.Clear();
+
+            if (Repo.Dados.Pastas.Count == 0)
+            {
+                var vazio = new TextBlock
+                {
+                    Text = "Nenhuma pasta criada ainda.\nClique em '+ Nova pasta' ao lado para começar.",
+                    Foreground = Ui.CorSubtexto,
+                    FontSize = 12,
+                    TextAlignment = TextAlignment.Center,
+                    Margin = new Thickness(0, 40, 0, 0)
+                };
+                _containerCards.Children.Add(vazio);
+                return;
+            }
 
             foreach (var p in Repo.Dados.Pastas)
             {
