@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using WF = System.Windows.Forms;
 
 namespace PastasBarra
@@ -33,7 +34,7 @@ namespace PastasBarra
 
             CriarBandeja();
             new Thread(OuvirPipe) { IsBackground = true }.Start();
-            Task.Run(() => Shell.ListarApps());   // aquece a lista de apps
+            Task.Run(() => { try { Shell.ListarApps(); } catch { } });
 
             _app.Dispatcher.BeginInvoke(new Action(() =>
             {
@@ -63,9 +64,14 @@ namespace PastasBarra
             _app.Run();
             _tray.Visible = false;
             _tray.Dispose();
+            if (_hTrayIcon != IntPtr.Zero) { try { DestroyIcon(_hTrayIcon); } catch { } _hTrayIcon = IntPtr.Zero; }
         }
 
-        public static void Sair() { _app.Shutdown(); }
+        public static void Sair()
+        {
+            if (_app != null)
+                _app.Dispatcher.BeginInvoke(new Action(() => _app.Shutdown()));
+        }
 
         // ---------- atualizacao automatica (OTA) ----------
         // So verifica a internet se a opcao estiver ligada e este for o programa instalado.
@@ -86,11 +92,43 @@ namespace PastasBarra
             VerificarAtualizacao(false);
         }
 
-        static void AoClicarNoAviso(object remetente, EventArgs e) { AbrirPaginaDeDownload(); }
+        static void AoClicarNoAviso(object remetente, EventArgs e) { VerificarAtualizacao(true); }
 
         static void AbrirPaginaDeDownload()
         {
             try { Process.Start(new ProcessStartInfo(Atualizador.PaginaReleases) { UseShellExecute = true }); } catch { }
+        }
+
+        static void AtualizarAgora(InfoAtualizacao info)
+        {
+            var aguarde = new Window
+            {
+                Title = "Pastas na barra",
+                Width = 340, Height = 130,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.ToolWindow,
+                Background = Ui.Pincel("#1F2230"),
+                Content = new TextBlock
+                {
+                    Text = "Baixando atualização " + info.Versao + "...\nPor favor, aguarde alguns instantes.",
+                    Foreground = System.Windows.Media.Brushes.White,
+                    TextAlignment = TextAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(16)
+                }
+            };
+            aguarde.Show();
+            Task.Run(() => Atualizador.BaixarEAplicar(info)).ContinueWith(t => _app.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                aguarde.Close();
+                string erro = t.IsFaulted ? t.Exception.GetBaseException().Message : t.Result;
+                if (!string.IsNullOrEmpty(erro))
+                {
+                    if (MessageBox.Show("Não foi possível atualizar automaticamente:\n" + erro + "\n\nAbrir a página de download no navegador?", "Atualizações", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+                        AbrirPaginaDeDownload();
+                }
+            })));
         }
 
         // manual = clicou em "Verificar atualizacoes agora" (mostra o resultado); automatico = so age se houver versao nova.
@@ -101,14 +139,22 @@ namespace PastasBarra
                 var r = t.IsFaulted ? new InfoAtualizacao { Erro = "Falha ao verificar." } : t.Result;
                 Repo.Dados.UltimaChecagem = DateTime.UtcNow.Ticks;
                 Repo.Salvar();
-                if (r.Erro != null) { if (manual) MessageBox.Show("N\u00e3o foi poss\u00edvel verificar atualiza\u00e7\u00f5es:\n" + r.Erro, "Atualiza\u00e7\u00f5es"); return; }
-                if (r.SemRelease) { if (manual) MessageBox.Show("Ainda n\u00e3o h\u00e1 nenhuma vers\u00e3o publicada para atualizar.", "Atualiza\u00e7\u00f5es"); return; }
-                if (!r.Disponivel) { if (manual) MessageBox.Show("Voc\u00ea j\u00e1 est\u00e1 na vers\u00e3o mais recente (" + Instalador.Versao + ").", "Atualiza\u00e7\u00f5es"); return; }
-                // So avisa e abre a pagina de download: o programa nao baixa nem troca o proprio .exe.
+                if (r.Erro != null) { if (manual) MessageBox.Show("Não foi possível verificar atualizações:\n" + r.Erro, "Atualizações"); return; }
+                if (r.SemRelease) { if (manual) MessageBox.Show("Ainda não há nenhuma versão publicada para atualizar.", "Atualizações"); return; }
+                if (!r.Disponivel) { if (manual) MessageBox.Show("Você já está na versão mais recente (" + Instalador.Versao + ").", "Atualizações"); return; }
+
                 if (manual)
                 {
-                    if (MessageBox.Show("Nova vers\u00e3o " + r.Versao + " dispon\u00edvel (voc\u00ea tem a " + Instalador.Versao + ").\nAbrir a p\u00e1gina de download?", "Atualiza\u00e7\u00f5es", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+                    var msg = "Nova versão " + r.Versao + " disponível (você tem a " + Instalador.Versao + ").\n\nDeseja atualizar agora automaticamente via OTA?";
+                    var resp = MessageBox.Show(msg, "Atualização do Pastas na barra", MessageBoxButton.YesNoCancel, MessageBoxImage.Information);
+                    if (resp == MessageBoxResult.Yes)
+                    {
+                        AtualizarAgora(r);
+                    }
+                    else if (resp == MessageBoxResult.No)
+                    {
                         AbrirPaginaDeDownload();
+                    }
                 }
                 else if (Repo.Dados.VersaoAvisada != r.Versao)
                 {
@@ -116,7 +162,7 @@ namespace PastasBarra
                     Repo.Salvar();
                     _tray.BalloonTipClicked -= AoClicarNoAviso;
                     _tray.BalloonTipClicked += AoClicarNoAviso;
-                    _tray.ShowBalloonTip(10000, "Pastas na barra", "Nova vers\u00e3o " + r.Versao + " dispon\u00edvel. Clique para baixar.", WF.ToolTipIcon.Info);
+                    _tray.ShowBalloonTip(10000, "Pastas na barra", "Nova versão " + r.Versao + " disponível. Clique para atualizar.", WF.ToolTipIcon.Info);
                 }
             })));
         }
@@ -237,6 +283,8 @@ namespace PastasBarra
             _tray.MouseClick += (s, e) => { if (e.Button == WF.MouseButtons.Left) AbrirConfiguracoes(); };
         }
 
+        static IntPtr _hTrayIcon = IntPtr.Zero;
+
         public static Icon IconeApp()
         {
             try
@@ -255,13 +303,8 @@ namespace PastasBarra
                 for (int i = 0; i < 4; i++)
                     using (var b = new SolidBrush(cores[i]))
                         g.FillEllipse(b, 2 + (i % 2) * 15, 2 + (i / 2) * 15, 13, 13);
-                IntPtr h = bmp.GetHicon();
-                try
-                {
-                    using (var temp = Icon.FromHandle(h))
-                        return (Icon)temp.Clone();
-                }
-                finally { DestroyIcon(h); }
+                _hTrayIcon = bmp.GetHicon();
+                return Icon.FromHandle(_hTrayIcon);
             }
         }
     }

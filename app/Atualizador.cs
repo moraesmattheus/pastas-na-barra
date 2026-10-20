@@ -91,5 +91,63 @@ namespace PastasBarra
             if (!Version.TryParse(nova, out n) || !Version.TryParse(atual, out a)) return false;
             return n > a;
         }
+
+        // Baixa o .exe diretamente do GitHub Releases, confere o SHA256 e substitui o arquivo local em 1 clique
+        public static string BaixarEAplicar(InfoAtualizacao info)
+        {
+            if (string.IsNullOrEmpty(info.UrlExe)) return "URL de download do executável não encontrada.";
+            try
+            {
+                PrepararRede();
+                byte[] bytesExe;
+                using (var wc = new WebClient())
+                {
+                    wc.Headers[HttpRequestHeader.UserAgent] = "PastasBarra/" + Instalador.Versao;
+                    bytesExe = wc.DownloadData(info.UrlExe);
+                }
+
+                if (!string.IsNullOrEmpty(info.UrlHash))
+                {
+                    try
+                    {
+                        string conteudoHash;
+                        using (var wc = new WebClient())
+                        {
+                            wc.Headers[HttpRequestHeader.UserAgent] = "PastasBarra/" + Instalador.Versao;
+                            conteudoHash = wc.DownloadString(info.UrlHash);
+                        }
+                        string hashEsperado = conteudoHash.Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries)[0];
+                        using (var sha = System.Security.Cryptography.SHA256.Create())
+                        {
+                            var h = sha.ComputeHash(bytesExe);
+                            var hashCalculado = BitConverter.ToString(h).Replace("-", "").ToUpperInvariant();
+                            if (!string.Equals(hashCalculado, hashEsperado, StringComparison.OrdinalIgnoreCase))
+                                return "Arquivo corrompido ou adulterado (SHA256 incompatível).";
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        return "Erro ao validar hash: " + ex.Message;
+                    }
+                }
+
+                string destino = Instalador.RodandoInstalado() ? Instalador.ExeInstalado : Instalador.ExeAtual;
+                string dir = Path.GetDirectoryName(destino);
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+                string backup = destino + ".old";
+                try { if (File.Exists(backup)) File.Delete(backup); } catch { }
+                File.Move(destino, backup);
+                File.WriteAllBytes(destino, bytesExe);
+
+                Process.Start(new ProcessStartInfo(destino, "--aguardar") { UseShellExecute = false });
+                App.Sair();
+                return null;
+            }
+            catch (Exception ex)
+            {
+                return ex.Message;
+            }
+        }
     }
 }

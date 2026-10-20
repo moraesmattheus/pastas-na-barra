@@ -443,7 +443,7 @@ namespace PastasBarra
         [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("000214F9-0000-0000-C000-000000000046")]
         interface IShellLinkW
         {
-            void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszFile, int cchMaxPath, out IntPtr pfd, uint fFlags);
+            void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszFile, int cchMaxPath, IntPtr pfd, uint fFlags);
             void GetIDList(out IntPtr ppidl);
             void SetIDList(IntPtr pidl);
             void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszName, int cchMaxName);
@@ -490,8 +490,7 @@ namespace PastasBarra
                 var sl = (IShellLinkW)new ShellLink();
                 ((IPersistFile)sl).Load(lnk, 0);
                 var sbAlvo = new StringBuilder(260);
-                IntPtr pfd;
-                sl.GetPath(sbAlvo, sbAlvo.Capacity, out pfd, 0);
+                sl.GetPath(sbAlvo, sbAlvo.Capacity, IntPtr.Zero, 0);
                 alvo = sbAlvo.ToString();
                 var sbArgs = new StringBuilder(1024);
                 sl.GetArguments(sbArgs, sbArgs.Capacity);

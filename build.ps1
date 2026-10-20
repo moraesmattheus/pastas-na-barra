@@ -1,4 +1,4 @@
-﻿# Compila o app (C#) em dist\PastasBarra.exe. Nao precisa instalar nada: usa o compilador do Visual Studio Build Tools
+# Compila o app (C#) em dist\PastasBarra.exe. Nao precisa instalar nada: usa o compilador do Visual Studio Build Tools
 # (ou o do .NET Framework, se for o caso).
 $ErrorActionPreference = 'Stop'
 $raiz = $PSScriptRoot
@@ -34,7 +34,7 @@ if (-not (Test-Path $ico)) {
     $w.Write([uint16]1); $w.Write([uint16]32); $w.Write([uint32]$png.Length); $w.Write([uint32]22); $w.Write($png); $w.Close()
 }
 $fontes = Get-ChildItem (Join-Path $raiz 'app') -Filter *.cs | ForEach-Object FullName
-& $csc /nologo /target:winexe /platform:anycpu /optimize+ /nowarn:1701,1702 /langversion:7.3 /main:PastasBarra.Inicio "/win32icon:$ico" "/win32manifest:$raiz\app\app.manifest" "/out:$dist\PastasBarra.exe" @refs @fontes
+& $csc /nologo /target:winexe /platform:anycpu /optimize+ /deterministic /debug- /nowarn:1701,1702 /langversion:7.3 /main:PastasBarra.Inicio "/win32icon:$ico" "/win32manifest:$raiz\app\app.manifest" "/out:$dist\PastasBarra.exe" @refs @fontes
 if ($LASTEXITCODE -ne 0) { throw "Falha na compilacao" }
 $hash = (Get-FileHash "$dist\PastasBarra.exe" -Algorithm SHA256).Hash
 Set-Content "$dist\PastasBarra.exe.sha256" "$hash  PastasBarra.exe"

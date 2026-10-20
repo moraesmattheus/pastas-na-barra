@@ -17,6 +17,17 @@ namespace PastasBarra
         [STAThread]
         public static int Main(string[] args)
         {
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            {
+                try
+                {
+                    string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PastasBarra");
+                    Directory.CreateDirectory(dir);
+                    File.AppendAllText(Path.Combine(dir, "crash.log"), DateTime.Now + " UNHANDLED: " + e.ExceptionObject + Environment.NewLine);
+                }
+                catch { }
+            };
+
             string abrir = null;
             for (int i = 0; i < args.Length - 1; i++) if (args[i] == "--abrir") abrir = args[i + 1];
             // arquivos soltos em cima do icone da pasta na barra: o Windows os anexa depois dos argumentos do atalho
@@ -50,6 +61,12 @@ namespace PastasBarra
                     else Enviar(abrir != null ? "abrir|" + abrir : "config");
                     return 0;
                 }
+                try
+                {
+                    string old = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName + ".old";
+                    if (File.Exists(old)) File.Delete(old);
+                }
+                catch { }
                 Rodar(abrir, bandeja, soltos.ToArray());
             }
             return 0;
