@@ -20,7 +20,7 @@ namespace PastasBarra
         static Window _config, _assistente, _fixar;
 
         // Chamado por Inicio.Main depois de confirmar que esta e a instancia principal.
-        public static void Executar(string abrir, bool bandeja, string[] soltos)
+        public static void Executar(string abrir, bool bandeja, string[] soltos, bool silencioso)
         {
             Repo.Carregar();
             _app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
@@ -36,6 +36,20 @@ namespace PastasBarra
 
             _app.Dispatcher.BeginInvoke(new Action(() =>
             {
+                if (silencioso)
+                {
+                    // atualizacao automatica: instala por cima da copia instalada, sem perguntar, e reabre
+                    string erroInst;
+                    if (Instalador.Instalar(out erroInst))
+                    {
+                        Process.Start(new ProcessStartInfo(Instalador.ExeInstalado, "--aguardar --bandeja") { UseShellExecute = false });
+                        _app.Shutdown();
+                        return;
+                    }
+                    try { File.AppendAllText(Path.Combine(Repo.Raiz, "erro.log"), DateTime.Now + " Atualizacao falhou: " + erroInst + Environment.NewLine); } catch { }
+                    IniciarNormal(null, true);
+                    return;
+                }
                 bool perguntar = !Instalador.RodandoInstalado() && !Repo.Dados.ModoPortatil && !bandeja && abrir == null;
                 if (perguntar)
                 {
@@ -58,12 +72,66 @@ namespace PastasBarra
                 var p0 = Repo.Dados.Pastas.FirstOrDefault();
                 if (p0 != null) { try { Painel.Aquecer(p0); } catch { } }
             }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            IniciarVerificacaoAutomatica();
+            LimparAtualizacaoAntiga();
             _app.Run();
             _tray.Visible = false;
             _tray.Dispose();
         }
 
         public static void Sair() { _app.Shutdown(); }
+
+        // ---------- atualizacao automatica (OTA) ----------
+        static void LimparAtualizacaoAntiga()
+        {
+            Task.Run(() =>
+            {
+                try { var d = Path.Combine(Path.GetTempPath(), "PastasBarra-update"); if (Directory.Exists(d)) Directory.Delete(d, true); } catch { }
+            });
+        }
+
+        // So verifica a internet se a opcao estiver ligada e este for o programa instalado.
+        static void IniciarVerificacaoAutomatica()
+        {
+            var primeira = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
+            primeira.Tick += (s, e) => { primeira.Stop(); VerificarAutomatico(); };
+            primeira.Start();
+            var periodica = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromHours(6) };
+            periodica.Tick += (s, e) => VerificarAutomatico();
+            periodica.Start();
+        }
+
+        static void VerificarAutomatico()
+        {
+            if (!Repo.Dados.AtualizarAuto || !Instalador.RodandoInstalado()) return;
+            if ((DateTime.UtcNow - new DateTime(Repo.Dados.UltimaChecagem, DateTimeKind.Utc)).TotalHours < 5) return;
+            VerificarAtualizacao(false);
+        }
+
+        // manual = clicou em "Verificar atualizacoes agora" (mostra o resultado); automatico = so age se houver versao nova.
+        public static void VerificarAtualizacao(bool manual)
+        {
+            Task.Run(() => Atualizador.Verificar()).ContinueWith(t => _app.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                var r = t.IsFaulted ? new InfoAtualizacao { Erro = "Falha ao verificar." } : t.Result;
+                Repo.Dados.UltimaChecagem = DateTime.UtcNow.Ticks;
+                Repo.Salvar();
+                if (r.Erro != null) { if (manual) MessageBox.Show("N\u00e3o foi poss\u00edvel verificar atualiza\u00e7\u00f5es:\n" + r.Erro, "Atualiza\u00e7\u00f5es"); return; }
+                if (r.SemRelease) { if (manual) MessageBox.Show("Ainda n\u00e3o h\u00e1 nenhuma vers\u00e3o publicada para atualizar.", "Atualiza\u00e7\u00f5es"); return; }
+                if (!r.Disponivel) { if (manual) MessageBox.Show("Voc\u00ea j\u00e1 est\u00e1 na vers\u00e3o mais recente (" + Instalador.Versao + ").", "Atualiza\u00e7\u00f5es"); return; }
+                if (!Instalador.RodandoInstalado())
+                {
+                    if (manual) MessageBox.Show("H\u00e1 uma vers\u00e3o nova (" + r.Versao + "), mas esta c\u00f3pia n\u00e3o est\u00e1 instalada. Instale o programa para atualizar sozinho.", "Atualiza\u00e7\u00f5es");
+                    return;
+                }
+                if (manual && MessageBox.Show("Nova vers\u00e3o " + r.Versao + " dispon\u00edvel (voc\u00ea tem a " + Instalador.Versao + ").\nAtualizar agora?", "Atualiza\u00e7\u00f5es", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
+                Task.Run(() => { string erro; return new Tuple<bool, string>(Atualizador.BaixarEAplicar(r, out erro), erro); }).ContinueWith(u =>
+                    _app.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (!u.IsFaulted && !u.Result.Item1 && manual) MessageBox.Show("N\u00e3o foi poss\u00edvel atualizar:\n" + u.Result.Item2, "Atualiza\u00e7\u00f5es");
+                    })));
+            })));
+        }
 
         // Arquivos/atalhos soltos em cima do icone da pasta na barra de tarefas entram na pasta (em vez de serem fixados soltos).
         static void AdicionarArquivos(string idOuNome, IEnumerable<string> caminhos)

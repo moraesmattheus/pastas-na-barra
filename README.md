@@ -13,10 +13,16 @@ Compile (veja abaixo) ou baixe o `PastasBarra.exe` e abra: ele pergunta se quer 
 ## Personalizar (tudo no painel ou em Configurações)
 - Arrastar app para dentro do painel, **+** para escolher da lista, botão direito para mover/remover.
 - Engrenagem ⚙ no painel: modo de edição com ✕, arrastar para reordenar, 8 cores, renomear, nova pasta, excluir e **nome no ícone** (mostra o nome da pasta embaixo do mosaico).
-- Configurações (ícone da bandeja): gerenciar pastas, fixar, iniciar com o Windows.
+- No modo ⚙ as mudanças ficam como rascunho: **Salvar alterações** grava, **Descartar** volta ao que estava (ao sair sem salvar, o programa pergunta).
+- Configurações (ícone da bandeja): gerenciar pastas, fixar, iniciar com o Windows, atualizações.
 
 ## Privacidade
-O programa roda só no seu computador: não coleta, não envia dados e não usa internet. Suas pastas ficam em `%APPDATA%\PastasBarra`.
+O programa roda no seu computador: não coleta nem envia dados seus. A **única** conexão com a internet é a verificação de atualização no GitHub, e só acontece se você ligar "Atualizar automaticamente" (ou clicar em "Verificar atualizações agora"). Suas pastas ficam em `%APPDATA%\PastasBarra`.
+
+## Atualizações (OTA)
+Em *Configurações* há "Atualizar automaticamente" (o instalador também pergunta). Com a opção ligada, a cada ~6 horas o programa consulta a última Release deste repositório; se houver versão nova, baixa o `PastasBarra.exe`, confere o SHA-256 contra o `PastasBarra.exe.sha256` da mesma Release, instala por cima e reabre. Só baixa de `github.com/moraesmattheus/pastas-na-barra/releases/download/`. Enquanto o `.exe` não for assinado digitalmente, o SHA-256 protege contra arquivo corrompido, mas não substitui a assinatura.
+
+Para publicar uma versão: suba `Versao` em `app/Instalador.cs` e `app/Info.cs`, faça commit e crie a tag `vX.Y.Z` (`git tag v0.2.0 && git push origin v0.2.0`); o GitHub Actions compila e cria a Release com o `.exe` e o hash.
 
 ## Compilar
 ```

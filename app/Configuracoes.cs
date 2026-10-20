@@ -14,7 +14,7 @@ namespace PastasBarra
         public ConfiguracoesJanela()
         {
             Title = "Pastas na barra · Configurações";
-            Width = 560; Height = 540;
+            Width = 560; Height = 600;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             Background = Ui.Pincel("#FFFAFAFA");
 
@@ -45,10 +45,19 @@ namespace PastasBarra
             Grid.SetRow(meio, 1);
             g.Children.Add(meio);
 
-            var inicio = new CheckBox { Content = "Iniciar junto com o Windows", IsChecked = Shell.IniciarComWindows, Margin = new Thickness(0, 14, 0, 0) };
+            var rodape = new StackPanel { Margin = new Thickness(0, 14, 0, 0) };
+            var inicio = new CheckBox { Content = "Iniciar junto com o Windows", IsChecked = Shell.IniciarComWindows };
             inicio.Click += (s, e) => Shell.IniciarComWindows = inicio.IsChecked == true;
-            Grid.SetRow(inicio, 2);
-            g.Children.Add(inicio);
+            var auto = new CheckBox { Content = "Atualizar automaticamente (verifica o GitHub; baixa e confere o SHA-256)", IsChecked = Repo.Dados.AtualizarAuto, Margin = new Thickness(0, 6, 0, 0) };
+            auto.Click += (s, e) => { Repo.Dados.AtualizarAuto = auto.IsChecked == true; Repo.Salvar(); };
+            var linhaVersao = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
+            var verificar = new Button { Content = "Verificar atualiza\u00e7\u00f5es agora", Padding = new Thickness(12, 6, 12, 6) };
+            verificar.Click += (s, e) => App.VerificarAtualizacao(true);
+            linhaVersao.Children.Add(verificar);
+            linhaVersao.Children.Add(new TextBlock { Text = "Vers\u00e3o " + Instalador.Versao, Foreground = Brushes.Gray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) });
+            rodape.Children.Add(inicio); rodape.Children.Add(auto); rodape.Children.Add(linhaVersao);
+            Grid.SetRow(rodape, 2);
+            g.Children.Add(rodape);
             Content = g;
             Recarregar();
             Activated += (s, e) => Recarregar();

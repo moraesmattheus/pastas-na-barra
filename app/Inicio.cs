@@ -25,6 +25,7 @@ namespace PastasBarra
                 for (int i = Array.IndexOf(args, abrir) + 1; i < args.Length; i++)
                     if (!args[i].StartsWith("--")) soltos.Add(args[i]);
             bool bandeja = args.Contains("--bandeja");
+            bool silencioso = args.Contains("--atualizar-silencioso");
 
             if (args.Contains("--desinstalar") || args.Contains("--desinstalar-final"))
             {
@@ -38,11 +39,11 @@ namespace PastasBarra
                 // recem-instalado: espera a copia anterior (que pediu a instalacao) terminar
                 if (!primeiro && args.Contains("--aguardar")) { try { primeiro = mutex.WaitOne(6000); } catch (AbandonedMutexException) { primeiro = true; } }
                 // abriu um .exe novo (sem argumentos) enquanto a versao instalada roda: pede para ela sair e assume (atualizacao)
-                if (!primeiro && args.Length == 0 && InstaladaDiferente())
+                if (!primeiro && (silencioso || (args.Length == 0 && InstaladaDiferente())))
                 {
                     Enviar("sair");
                     Enviar("sair", "PastasBarra.pipe");   // versoes antigas usavam este nome de canal
-                    try { primeiro = mutex.WaitOne(6000); } catch (AbandonedMutexException) { primeiro = true; }
+                    try { primeiro = mutex.WaitOne(silencioso ? 15000 : 6000); } catch (AbandonedMutexException) { primeiro = true; }
                 }
                 if (!primeiro)
                 {
@@ -50,7 +51,7 @@ namespace PastasBarra
                     else Enviar(abrir != null ? "abrir|" + abrir : "config");
                     return 0;
                 }
-                Rodar(abrir, bandeja, soltos.ToArray());
+                Rodar(abrir, bandeja, soltos.ToArray(), silencioso);
             }
             return 0;
         }
@@ -72,9 +73,9 @@ namespace PastasBarra
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static void Rodar(string abrir, bool bandeja, string[] soltos)
+        static void Rodar(string abrir, bool bandeja, string[] soltos, bool silencioso)
         {
-            App.Executar(abrir, bandeja, soltos);
+            App.Executar(abrir, bandeja, soltos, silencioso);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

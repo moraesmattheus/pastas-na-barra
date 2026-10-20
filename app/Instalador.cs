@@ -17,7 +17,7 @@ namespace PastasBarra
     {
         const string ChaveUn = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\PastasBarra";
         const string ChaveRun = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        public const string Versao = "0.1.0";
+        public const string Versao = "0.2.0";
 
         public static readonly string Pasta = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "PastasBarra");
@@ -144,6 +144,8 @@ namespace PastasBarra
                 Text = "Vamos copiar o programa para a sua conta (sem precisar de administrador), criar um atalho no Menu Iniciar e fazer ele abrir junto com o Windows. Você pode desinstalar depois em Configurações > Aplicativos.",
                 TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 16), Foreground = Brushes.Gray
             });
+            var auto = new CheckBox { Content = "Manter atualizado automaticamente (verifica o GitHub; voc\u00ea pode desligar depois)", IsChecked = true, Margin = new Thickness(0, 0, 0, 14) };
+            pl.Children.Add(auto);
             var linha = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
             var so = new Button { Content = "Só executar", Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(0, 0, 8, 0) };
             var ok = new Button { Content = atualizando ? "Atualizar" : "Instalar", Padding = new Thickness(24, 8, 24, 8), IsDefault = true };
@@ -157,6 +159,8 @@ namespace PastasBarra
                 string erro;
                 if (Instalador.Instalar(out erro))
                 {
+                    Repo.Dados.AtualizarAuto = auto.IsChecked == true;
+                    Repo.Salvar();
                     Instalou = true;
                     Close();
                 }

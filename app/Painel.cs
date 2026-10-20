@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
+using System.Web.Script.Serialization;
 using System.Windows.Shapes;
 using WF = System.Windows.Forms;
 
@@ -32,6 +33,8 @@ namespace PastasBarra
         readonly List<Tuple<AppItem, Ellipse>> _pontos = new List<Tuple<AppItem, Ellipse>>();
         bool _ativou, _ocupado, _editando, _fechando, _saindo, _silencioso;
         Border _moldura;
+        string _snapshot;      // copia da pasta ao entrar no modo de edicao (para descartar)
+        bool _alterado;        // ha mudancas ainda nao salvas
         TranslateTransform _slide;
 
         public static void Abrir(Pasta p)
@@ -98,7 +101,7 @@ namespace PastasBarra
                 HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
                 Cursor = Cursors.Hand, Background = Brushes.Transparent, ToolTip = "Personalizar esta pasta", Padding = new Thickness(6, 0, 0, 0)
             };
-            engrenagem.MouseLeftButtonUp += (s, e) => { _editando = !_editando; Montar(); };
+            engrenagem.MouseLeftButtonUp += (s, e) => AlternarEdicao();
             cab.Children.Add(_titulo); cab.Children.Add(engrenagem);
 
             var pilha = new StackPanel();
@@ -118,7 +121,7 @@ namespace PastasBarra
             Closing += (s, e) => _fechando = true;
             // no modo de edicao o painel fica aberto (permite arrastar apps de outras janelas para ele)
             Deactivated += (s, e) => { if (_ativou && !_ocupado && !_fechando && !_editando) FecharSuave(); };
-            KeyDown += (s, e) => { if (e.Key == Key.Escape) { if (_editando) { _editando = false; Montar(); } else FecharSuave(); } };
+            KeyDown += (s, e) => { if (e.Key == Key.Escape) { if (_editando) AlternarEdicao(); else FecharSuave(); } };
             Closed += (s, e) => { _fechouEm = DateTime.Now; _fechouId = _pasta.Id; if (_aberto == this) _aberto = null; };
             Montar();
 
@@ -158,6 +161,7 @@ namespace PastasBarra
         void FecharSuave()
         {
             if (_saindo || _fechando) return;
+            if (_editando && _alterado && !ResolverAlteracoes()) return;   // pergunta se quer salvar
             _saindo = true;
             _fechouEm = DateTime.Now; _fechouId = _pasta.Id;
             var a = new DoubleAnimation(_moldura.Opacity, 0, TimeSpan.FromMilliseconds(90));
@@ -264,7 +268,12 @@ namespace PastasBarra
             acoes.Children.Add(Acao("Excluir", Excluir, true));
             var acoes2 = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 6, 0, 0) };
             acoes2.Children.Add(Acao(_pasta.MostrarNome ? "Nome no \u00edcone: ligado \u2713" : "Nome no \u00edcone: desligado", () => { _pasta.MostrarNome = !_pasta.MostrarNome; Salvar(); }, false));
-            pl.Children.Add(cores); pl.Children.Add(acoes); pl.Children.Add(acoes2);
+            var gravar = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) };
+            var botaoSalvar = Acao(_alterado ? "Salvar altera\u00e7\u00f5es" : "Tudo salvo \u2713", () => { if (_alterado) Persistir(); }, false);
+            if (_alterado) botaoSalvar.Background = Ui.Pincel("#2E9E5B");
+            gravar.Children.Add(botaoSalvar);
+            if (_alterado) gravar.Children.Add(Acao("Descartar", Descartar, true));
+            pl.Children.Add(cores); pl.Children.Add(acoes); pl.Children.Add(acoes2); pl.Children.Add(gravar);
             pl.Children.Add(new TextBlock
             {
                 Text = "Solte aqui arquivos, atalhos ou apps para adicionar · arraste os ícones para reordenar · ✕ remove · ⚙ conclui",
@@ -383,10 +392,57 @@ namespace PastasBarra
             try { a(); } finally { _ocupado = false; Activate(); }
         }
 
+        // No modo de edicao as mudancas ficam como rascunho (visiveis no painel) ate clicar em Salvar;
+        // fora dele (menu de botao direito, soltar arquivos) gravam na hora.
         void Salvar()
+        {
+            if (_editando) { _alterado = true; Montar(); }
+            else Persistir();
+        }
+
+        void Persistir()
         {
             Repo.Salvar();
             Shell.AtualizarPasta(_pasta);
+            _alterado = false;
+            Montar();
+        }
+
+        void AlternarEdicao()
+        {
+            if (!_editando)
+            {
+                _snapshot = new JavaScriptSerializer().Serialize(_pasta);
+                _alterado = false;
+                _editando = true;
+                Montar();
+                return;
+            }
+            if (!ResolverAlteracoes()) return;
+            _editando = false;
+            Montar();
+        }
+
+        // Retorna false se o usuario cancelou (continua editando).
+        bool ResolverAlteracoes()
+        {
+            if (!_alterado) return true;
+            var r = MessageBoxResult.Cancel;
+            Dialogo(() => r = MessageBox.Show("Salvar as altera\u00e7\u00f5es desta pasta?", "Pastas na barra", MessageBoxButton.YesNoCancel));
+            if (r == MessageBoxResult.Cancel) return false;
+            if (r == MessageBoxResult.Yes) Persistir(); else Descartar();
+            return true;
+        }
+
+        void Descartar()
+        {
+            if (_snapshot != null)
+            {
+                var o = new JavaScriptSerializer().Deserialize<Pasta>(_snapshot);
+                _pasta.Cor = o.Cor; _pasta.MostrarNome = o.MostrarNome;
+                _pasta.Apps.Clear(); _pasta.Apps.AddRange(o.Apps);
+            }
+            _alterado = false;
             Montar();
         }
 
@@ -406,7 +462,7 @@ namespace PastasBarra
             if (!Repo.NomeDisponivel(nome, _pasta)) { Dialogo(() => MessageBox.Show("J\u00e1 existe uma pasta com esse nome.", "Renomear pasta")); return; }
             Shell.ApagarAtalho(_pasta);
             _pasta.Nome = nome;
-            Salvar();
+            Persistir();
         }
 
         void MudarCor()

@@ -30,6 +30,8 @@ namespace PastasBarra
     {
         public bool PrimeiraVezConcluida;
         public bool ModoPortatil;
+        public bool AtualizarAuto;      // atualizacao automatica (OTA) ligada
+        public long UltimaChecagem;     // ticks (UTC) da ultima verificacao
         public List<Pasta> Pastas = new List<Pasta>();
     }
 
