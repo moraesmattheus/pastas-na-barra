@@ -43,10 +43,11 @@ namespace PastasBarra
                 Guid iid = new Guid("bcc18b79-ba16-442f-80c4-8a59c30c463b");
                 IShellItemImageFactory f;
                 SHCreateItemFromParsingName(caminho, IntPtr.Zero, ref iid, out f);
-                IntPtr hbm;
-                if (f.GetImage(new SIZE(tam, tam), 0, out hbm) != 0) return null;
+                if (f == null) return null;
+                IntPtr hbm = IntPtr.Zero;
                 try
                 {
+                    if (f.GetImage(new SIZE(tam, tam), 0, out hbm) != 0 || hbm == IntPtr.Zero) return null;
                     using (Bitmap src = Image.FromHbitmap(hbm))
                     {
                         Rectangle r = new Rectangle(0, 0, src.Width, src.Height);
@@ -61,7 +62,11 @@ namespace PastasBarra
                         finally { src.UnlockBits(d); }
                     }
                 }
-                finally { DeleteObject(hbm); }
+                finally
+                {
+                    if (hbm != IntPtr.Zero) DeleteObject(hbm);
+                    Marshal.ReleaseComObject(f);
+                }
             }
             catch { return null; }
         }
@@ -75,12 +80,18 @@ namespace PastasBarra
 
         static string SalvarIcone(string alvo, string nome)
         {
-            var bmp = Icone(alvo, 96);
-            if (bmp == null) return null;
             string png = Path.Combine(Repo.Icones, "app-" + Seguro(nome) + "-" + (uint)alvo.GetHashCode() + ".png");
-            bmp.Save(png, ImageFormat.Png);
-            bmp.Dispose();
-            return png;
+            if (File.Exists(png)) return png;
+            using (var bmp = Icone(alvo, 96))
+            {
+                if (bmp == null) return null;
+                try
+                {
+                    bmp.Save(png, ImageFormat.Png);
+                    return png;
+                }
+                catch { return null; }
+            }
         }
 
         // ---------- apps instalados (lista nativa do shell: a mesma "Todos os apps" do Windows) ----------
@@ -228,8 +239,24 @@ namespace PastasBarra
         {
             try
             {
-                if (a.Tipo == "shell") Process.Start("explorer.exe", a.Alvo);
-                else Process.Start(new ProcessStartInfo(a.Alvo) { UseShellExecute = true, Arguments = a.Args ?? "" });
+                if (a.Tipo == "shell")
+                {
+                    Process.Start("explorer.exe", a.Alvo);
+                }
+                else
+                {
+                    var psi = new ProcessStartInfo(a.Alvo)
+                    {
+                        UseShellExecute = true,
+                        Arguments = a.Args ?? ""
+                    };
+                    try
+                    {
+                        if (File.Exists(a.Alvo)) psi.WorkingDirectory = Path.GetDirectoryName(a.Alvo);
+                    }
+                    catch { }
+                    Process.Start(psi);
+                }
             }
             catch { }
         }
@@ -237,6 +264,25 @@ namespace PastasBarra
         // ---------- app aberto? (pontinho) ----------
         // Usa so o NOME dos processos que tem janela (nao le titulos de janelas nem conteudo: privacidade).
         static HashSet<string> _procs = new HashSet<string>();
+
+        static readonly Dictionary<string, string> _aliasProc = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "blocodenotas", "notepad" },
+            { "calculadora", "calculator" },
+            { "ferramentadecaptura", "snippingtool" },
+            { "captura", "snippingtool" },
+            { "gerenciadordetarefas", "taskmgr" },
+            { "configuraes", "systemsettings" },
+            { "configuracoes", "systemsettings" },
+            { "exploradordearquivos", "explorer" },
+            { "reprodutordemidia", "wmplayer" },
+            { "promptdecomando", "cmd" },
+            { "editordoregistro", "regedit" },
+            { "cmera", "windowscamera" },
+            { "camera", "windowscamera" },
+            { "gravadordevoz", "soundrecorder" },
+            { "fotos", "microsoftphotos" }
+        };
 
         static string Norm(string s)
         {
@@ -258,10 +304,16 @@ namespace PastasBarra
         public static bool Rodando(AppItem a)
         {
             string n = Norm(a.Nome);
-            if (n.Length < 3) return false;
+            string fn = "";
+            try { if (!string.IsNullOrEmpty(a.Alvo) && a.Tipo == "arquivo") fn = Norm(Path.GetFileNameWithoutExtension(a.Alvo)); } catch { }
+            string alias;
+            _aliasProc.TryGetValue(n, out alias);
+
             foreach (var proc in _procs)
             {
                 if (proc == n) return true;
+                if (!string.IsNullOrEmpty(fn) && (proc == fn || (fn.Length >= 4 && proc.Length >= 4 && (proc.Contains(fn) || fn.Contains(proc))))) return true;
+                if (!string.IsNullOrEmpty(alias) && (proc == alias || proc.Contains(alias) || alias.Contains(proc))) return true;
                 if (n.Length >= 4 && proc.Length >= 4 && (proc.Contains(n) || n.Contains(proc))) return true;
             }
             return false;
@@ -303,7 +355,14 @@ namespace PastasBarra
                 for (int i = 0; i < icones.Count; i++)
                 {
                     float x = x0 + ini + (i % 3) * (cel + esp), y = y0 + ini + (i / 3) * (cel + esp);
-                    using (var img = Image.FromFile(icones[i].Icone)) g.DrawImage(img, x, y, cel, cel);
+                    try
+                    {
+                        byte[] bytes = File.ReadAllBytes(icones[i].Icone);
+                        using (var ms = new MemoryStream(bytes))
+                        using (var img = Image.FromStream(ms))
+                            g.DrawImage(img, x, y, cel, cel);
+                    }
+                    catch { }
                 }
                 if (nome)
                 {
@@ -377,6 +436,107 @@ namespace PastasBarra
             Repo.Salvar();
         }
 
+        // ---------- atalhos nativos via COM (sem WScript.Shell / scripts) ----------
+        [ComImport, Guid("00021401-0000-0000-C000-000000000046")]
+        class ShellLink { }
+
+        [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("000214F9-0000-0000-C000-000000000046")]
+        interface IShellLinkW
+        {
+            void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszFile, int cchMaxPath, out IntPtr pfd, uint fFlags);
+            void GetIDList(out IntPtr ppidl);
+            void SetIDList(IntPtr pidl);
+            void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszName, int cchMaxName);
+            void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string pszName);
+            void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszDir, int cchMaxPath);
+            void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string pszDir);
+            void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszArgs, int cchMaxPath);
+            void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string pszArgs);
+            void GetHotkey(out short pwHotkey);
+            void SetHotkey(short wHotkey);
+            void GetShowCmd(out int piShowCmd);
+            void SetShowCmd(int iShowCmd);
+            void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszIconPath, int cchIconPath, out int piIcon);
+            void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string pszIconPath, int iIcon);
+            void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string pszPathRel, uint dwReserved);
+            void Resolve(IntPtr hwnd, uint fFlags);
+            void SetPath([MarshalAs(UnmanagedType.LPWStr)] string pszFile);
+        }
+
+        [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("0000010b-0000-0000-C000-000000000046")]
+        interface IPersistFile
+        {
+            void GetClassID(out Guid pClassID);
+            [PreserveSig] int IsDirty();
+            void Load([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, uint dwMode);
+            void Save([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, [MarshalAs(UnmanagedType.Bool)] bool fRemember);
+            void SaveCompleted([MarshalAs(UnmanagedType.LPWStr)] string pszFileName);
+            void GetCurFile([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder ppszFileName);
+        }
+
+        [DllImport("shell32.dll")]
+        static extern void SHChangeNotify(uint wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
+
+        public static void NotificarShell()
+        {
+            try { SHChangeNotify(0x08000000 /* SHCNE_ASSOCCHANGED */, 0 /* SHCNF_IDLIST */, IntPtr.Zero, IntPtr.Zero); } catch { }
+        }
+
+        public static bool LerAtalho(string lnk, out string alvo, out string args, out string icone, out int iconeIdx)
+        {
+            alvo = null; args = null; icone = null; iconeIdx = 0;
+            try
+            {
+                var sl = (IShellLinkW)new ShellLink();
+                ((IPersistFile)sl).Load(lnk, 0);
+                var sbAlvo = new StringBuilder(260);
+                IntPtr pfd;
+                sl.GetPath(sbAlvo, sbAlvo.Capacity, out pfd, 0);
+                alvo = sbAlvo.ToString();
+                var sbArgs = new StringBuilder(1024);
+                sl.GetArguments(sbArgs, sbArgs.Capacity);
+                args = sbArgs.ToString();
+                var sbIco = new StringBuilder(260);
+                sl.GetIconLocation(sbIco, sbIco.Capacity, out iconeIdx);
+                icone = sbIco.ToString();
+                Marshal.ReleaseComObject(sl);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        public static void CriarAtalho(string lnk, string alvo, string args, string icone, string desc = "")
+        {
+            try
+            {
+                var sl = (IShellLinkW)new ShellLink();
+                if (File.Exists(lnk))
+                {
+                    try { ((IPersistFile)sl).Load(lnk, 0); } catch { }
+                }
+                sl.SetPath(alvo);
+                if (args != null) sl.SetArguments(args);
+                if (!string.IsNullOrEmpty(icone))
+                {
+                    string icoPath = icone;
+                    int idx = 0;
+                    int virgula = icone.LastIndexOf(',');
+                    if (virgula > 0)
+                    {
+                        int.TryParse(icone.Substring(virgula + 1), out idx);
+                        icoPath = icone.Substring(0, virgula);
+                    }
+                    sl.SetIconLocation(icoPath, idx);
+                }
+                if (!string.IsNullOrEmpty(desc)) sl.SetDescription(desc);
+                string dir = Path.GetDirectoryName(lnk);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                ((IPersistFile)sl).Save(lnk, true);
+                Marshal.ReleaseComObject(sl);
+            }
+            catch { }
+        }
+
         // Cria/atualiza o atalho da pasta (e o icone) e tambem as copias dela fixadas na barra.
         public static string AtualizarPasta(Pasta p)
         {
@@ -384,6 +544,7 @@ namespace PastasBarra
             string lnk = CaminhoAtalho(p);
             GravarAtalho(lnk, p);
             foreach (var f in FixadosDe(p)) GravarAtalho(f, p);
+            NotificarShell();
             return lnk;
         }
 
@@ -392,18 +553,15 @@ namespace PastasBarra
         {
             string alvo = Process.GetCurrentProcess().MainModule.FileName;
             string args = "--abrir " + p.Id;
-            string ico = CaminhoIcone(p) + ",0";
-            dynamic sh = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell"));
-            dynamic a = sh.CreateShortcut(lnk);
-            if (File.Exists(lnk)
-                && string.Equals((string)a.TargetPath, alvo, StringComparison.OrdinalIgnoreCase)
-                && (string)a.Arguments == args
-                && string.Equals((string)a.IconLocation, ico, StringComparison.OrdinalIgnoreCase)) return;
-            a.TargetPath = alvo;
-            a.Arguments = args;
-            a.IconLocation = ico;
-            a.Description = "Pasta " + p.Nome;
-            a.Save();
+            string ico = CaminhoIcone(p);
+            string atualAlvo, atualArgs, atualIco; int atualIdx;
+            if (File.Exists(lnk) && LerAtalho(lnk, out atualAlvo, out atualArgs, out atualIco, out atualIdx))
+            {
+                if (string.Equals(atualAlvo, alvo, StringComparison.OrdinalIgnoreCase)
+                    && (atualArgs ?? "").Trim() == args
+                    && string.Equals(atualIco, ico, StringComparison.OrdinalIgnoreCase)) return;
+            }
+            CriarAtalho(lnk, alvo, args, ico + ",0", "Pasta " + p.Nome);
         }
 
         // Copias desta pasta fixadas na barra: achadas pelo ID nos argumentos (nao pelo nome do arquivo,
@@ -414,11 +572,11 @@ namespace PastasBarra
             try
             {
                 if (!Directory.Exists(PastaFixados)) return r;
-                dynamic sh = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell"));
                 foreach (var f in Directory.GetFiles(PastaFixados, "*.lnk"))
                 {
-                    string args;
-                    try { args = ((string)sh.CreateShortcut(f).Arguments ?? "").Trim(); } catch { continue; }
+                    string alvo, args, ico; int idx;
+                    if (!LerAtalho(f, out alvo, out args, out ico, out idx)) continue;
+                    args = (args ?? "").Trim();
                     if (args == "--abrir " + p.Id || (args.Contains("abrir.vbs") && args.EndsWith("\"" + p.Nome + "\""))) r.Add(f);
                 }
             }
@@ -433,12 +591,16 @@ namespace PastasBarra
             try
             {
                 if (!Directory.Exists(PastaFixados)) return ids;
-                dynamic sh = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell"));
                 foreach (var f in Directory.GetFiles(PastaFixados, "*.lnk"))
                 {
-                    string args;
-                    try { args = ((string)sh.CreateShortcut(f).Arguments ?? "").Trim(); } catch { continue; }
-                    if (args.StartsWith("--abrir ")) ids.Add(args.Substring(8));
+                    string alvo, args, ico; int idx;
+                    if (!LerAtalho(f, out alvo, out args, out ico, out idx)) continue;
+                    args = (args ?? "").Trim();
+                    if (args.StartsWith("--abrir "))
+                    {
+                        var id = args.Substring(8).Trim().Split(' ')[0];
+                        if (!string.IsNullOrEmpty(id)) ids.Add(id);
+                    }
                 }
             }
             catch { }
@@ -453,6 +615,7 @@ namespace PastasBarra
         {
             try { File.Delete(CaminhoAtalho(p)); } catch { }
             try { File.Delete(CaminhoIcone(p)); } catch { }
+            NotificarShell();
         }
 
         // ---------- iniciar com o Windows ----------
@@ -467,10 +630,20 @@ namespace PastasBarra
             }
             set
             {
-                using (var k = Registry.CurrentUser.OpenSubKey(ChaveRun, true))
+                using (var k = Registry.CurrentUser.CreateSubKey(ChaveRun))
                 {
-                    if (value) k.SetValue("PastasBarra", "\"" + Process.GetCurrentProcess().MainModule.FileName + "\" --bandeja");
-                    else k.DeleteValue("PastasBarra", false);
+                    if (k != null)
+                    {
+                        if (value)
+                        {
+                            string exe = Instalador.RodandoInstalado() ? Instalador.ExeInstalado : Process.GetCurrentProcess().MainModule.FileName;
+                            k.SetValue("PastasBarra", "\"" + exe + "\" --bandeja");
+                        }
+                        else
+                        {
+                            k.DeleteValue("PastasBarra", false);
+                        }
+                    }
                 }
             }
         }

@@ -100,8 +100,15 @@ namespace PastasBarra
             // grava em arquivo temporario e troca: uma queda no meio da escrita nao corrompe os dados
             string tmp = Arq + ".tmp";
             File.WriteAllText(tmp, js.Serialize(Dados));
-            if (File.Exists(Arq)) File.Replace(tmp, Arq, null);
-            else File.Move(tmp, Arq);
+            try
+            {
+                if (File.Exists(Arq)) File.Replace(tmp, Arq, null);
+                else File.Move(tmp, Arq);
+            }
+            catch
+            {
+                try { File.Copy(tmp, Arq, true); File.Delete(tmp); } catch { }
+            }
         }
 
         public static Pasta Achar(string idOuNome)

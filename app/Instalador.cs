@@ -17,7 +17,7 @@ namespace PastasBarra
     {
         const string ChaveUn = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\PastasBarra";
         const string ChaveRun = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        public const string Versao = "0.2.0";
+        public const string Versao = "0.2.1";
 
         public static readonly string Pasta = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "PastasBarra");
@@ -38,12 +38,7 @@ namespace PastasBarra
                 Directory.CreateDirectory(Pasta);
                 File.Copy(ExeAtual, ExeInstalado, true);
 
-                dynamic sh = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell"));
-                dynamic a = sh.CreateShortcut(AtalhoMenu);
-                a.TargetPath = ExeInstalado;
-                a.Arguments = "";
-                a.Description = "Pastas de apps na barra de tarefas";
-                a.Save();
+                Shell.CriarAtalho(AtalhoMenu, ExeInstalado, "", ExeInstalado + ",0", "Pastas de apps na barra de tarefas");
 
                 using (var k = Registry.CurrentUser.CreateSubKey(ChaveUn))
                 {
@@ -55,6 +50,14 @@ namespace PastasBarra
                     k.SetValue("UninstallString", "\"" + ExeInstalado + "\" --desinstalar");
                     k.SetValue("NoModify", 1, RegistryValueKind.DWord);
                     k.SetValue("NoRepair", 1, RegistryValueKind.DWord);
+                    k.SetValue("HelpLink", "https://github.com/moraesmattheus/pastas-na-barra");
+                    k.SetValue("URLInfoAbout", "https://github.com/moraesmattheus/pastas-na-barra");
+                    try
+                    {
+                        var fi = new FileInfo(ExeInstalado);
+                        k.SetValue("EstimatedSize", (int)(fi.Length / 1024), RegistryValueKind.DWord);
+                    }
+                    catch { }
                 }
                 if (iniciarComWindows)
                     using (var k = Registry.CurrentUser.CreateSubKey(ChaveRun))
@@ -85,7 +88,7 @@ namespace PastasBarra
             PedirParaSair();
             try { using (var k = Registry.CurrentUser.OpenSubKey(ChaveRun, true)) if (k != null) k.DeleteValue("PastasBarra", false); } catch { }
             try { Registry.CurrentUser.DeleteSubKeyTree(ChaveUn, false); } catch { }
-            try { File.Delete(AtalhoMenu); } catch { }
+            try { File.Delete(AtalhoMenu); Shell.NotificarShell(); } catch { }
             string eu = ExeAtual;
             try
             {

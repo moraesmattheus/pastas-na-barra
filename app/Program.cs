@@ -5,6 +5,7 @@ using System.Drawing;
 using System.IO;
 using System.IO.Pipes;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -194,7 +195,7 @@ namespace PastasBarra
             {
                 try
                 {
-                    using (var s = new NamedPipeServerStream(NomePipe, PipeDirection.In))
+                    using (var s = new NamedPipeServerStream(NomePipe, PipeDirection.In, NamedPipeServerStream.MaxAllowedServerInstances))
                     {
                         s.WaitForConnection();
                         string linha = new StreamReader(s).ReadLine();
@@ -216,6 +217,9 @@ namespace PastasBarra
             }
         }
 
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern bool DestroyIcon(IntPtr hIcon);
+
         // ---------- icone da bandeja ----------
         static void CriarBandeja()
         {
@@ -235,6 +239,13 @@ namespace PastasBarra
 
         public static Icon IconeApp()
         {
+            try
+            {
+                var ico = Icon.ExtractAssociatedIcon(Process.GetCurrentProcess().MainModule.FileName);
+                if (ico != null) return ico;
+            }
+            catch { }
+
             using (var bmp = new Bitmap(32, 32))
             using (var g = Graphics.FromImage(bmp))
             {
@@ -244,7 +255,13 @@ namespace PastasBarra
                 for (int i = 0; i < 4; i++)
                     using (var b = new SolidBrush(cores[i]))
                         g.FillEllipse(b, 2 + (i % 2) * 15, 2 + (i / 2) * 15, 13, 13);
-                return Icon.FromHandle(bmp.GetHicon());
+                IntPtr h = bmp.GetHicon();
+                try
+                {
+                    using (var temp = Icon.FromHandle(h))
+                        return (Icon)temp.Clone();
+                }
+                finally { DestroyIcon(h); }
             }
         }
     }

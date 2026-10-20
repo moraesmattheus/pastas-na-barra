@@ -77,7 +77,7 @@ namespace PastasBarra
             ResizeMode = ResizeMode.NoResize;
             UseLayoutRounding = true;
             AllowDrop = true;
-            Left = -10000; Top = -10000;
+            Left = _cursor.X; Top = _cursor.Y;
 
             var moldura = _moldura = new Border
             {
@@ -337,7 +337,9 @@ namespace PastasBarra
             host.Drop += (s, e) =>
             {
                 if (!e.Data.GetDataPresent(FormatoApp)) return;
-                int de = int.Parse((string)e.Data.GetData(FormatoApp)), para = _pasta.Apps.IndexOf(app);
+                int de;
+                if (!int.TryParse((string)e.Data.GetData(FormatoApp), out de)) return;
+                int para = _pasta.Apps.IndexOf(app);
                 e.Handled = true;
                 if (de < 0 || para < 0 || de == para) return;
                 var item = _pasta.Apps[de];
@@ -514,13 +516,13 @@ namespace PastasBarra
             double w = ActualWidth, h = ActualHeight;
             Func<double, double, double, double> limitar = (v, min, max) => Math.Max(min, Math.Min(max, v));
             if (area.Left > limites.Left)          // barra na esquerda
-            { Left = tl.X; Top = limitar(cur.Y - h / 2, tl.Y, br.Y - h); }
+            { Left = tl.X; Top = Math.Max(tl.Y, limitar(cur.Y - h / 2, tl.Y, br.Y - h)); }
             else if (area.Right < limites.Right)   // barra na direita
-            { Left = br.X - w; Top = limitar(cur.Y - h / 2, tl.Y, br.Y - h); }
+            { Left = br.X - w; Top = Math.Max(tl.Y, limitar(cur.Y - h / 2, tl.Y, br.Y - h)); }
             else if (area.Top > limites.Top)       // barra em cima
             { Left = limitar(cur.X - w / 2, tl.X, br.X - w); Top = tl.Y; }
             else                                   // barra embaixo (padrao)
-            { Left = limitar(cur.X - w / 2, tl.X, br.X - w); Top = br.Y - h; }
+            { Left = limitar(cur.X - w / 2, tl.X, br.X - w); Top = Math.Max(tl.Y, br.Y - h); }
         }
     }
 }
