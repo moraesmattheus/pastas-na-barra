@@ -1,0 +1,439 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
+using System.Windows.Shapes;
+using WF = System.Windows.Forms;
+
+namespace PastasBarra
+{
+    // O painel que abre acima da barra de tarefas ao clicar no icone de uma pasta.
+    // A engrenagem liga o modo de edicao (remover, reordenar arrastando, cor, renomear, excluir).
+    public class Painel : Window
+    {
+        const string FormatoApp = "PastasBarraApp";
+
+        static DateTime _fechouEm = DateTime.MinValue;
+        static string _fechouId = "";
+        static Painel _aberto;
+
+        readonly Pasta _pasta;
+        readonly System.Drawing.Point _cursor;
+        readonly TextBlock _titulo = new TextBlock();
+        readonly UniformGrid _grade = new UniformGrid();
+        readonly ContentControl _rodape = new ContentControl();
+        readonly List<Tuple<AppItem, Ellipse>> _pontos = new List<Tuple<AppItem, Ellipse>>();
+        bool _ativou, _ocupado, _editando, _fechando, _saindo, _silencioso;
+        Border _moldura;
+        TranslateTransform _slide;
+
+        public static void Abrir(Pasta p)
+        {
+            // clicar de novo no icone com o painel aberto = fechar (ele ja fechou ao perder o foco)
+            if (_fechouId == p.Id && (DateTime.Now - _fechouEm).TotalMilliseconds < 700) { _fechouId = ""; return; }
+            if (_aberto != null) _aberto.Close();
+            _aberto = new Painel(p);
+            _aberto.Show();
+        }
+
+        // Cria e fecha um painel fora da tela no inicio, para o primeiro clique de verdade ja ser instantaneo.
+        public static void Aquecer(Pasta p)
+        {
+            var w = new Painel(p);
+            w._silencioso = true;
+            w.Show();
+            w.Close();
+            _fechouId = ""; _fechouEm = DateTime.MinValue;
+        }
+
+        Painel(Pasta p)
+        {
+            _pasta = p;
+            _cursor = WF.Cursor.Position;
+            WindowStyle = WindowStyle.None;
+            AllowsTransparency = true;
+            Background = Brushes.Transparent;
+            ShowInTaskbar = false;
+            Topmost = true;
+            SizeToContent = SizeToContent.WidthAndHeight;
+            ResizeMode = ResizeMode.NoResize;
+            UseLayoutRounding = true;
+            AllowDrop = true;
+            Left = -10000; Top = -10000;
+
+            var moldura = _moldura = new Border
+            {
+                CornerRadius = new CornerRadius(18),
+                Padding = new Thickness(16),
+                Margin = new Thickness(10),
+                Background = Ui.Pincel("#EE1F2230"),
+                BorderBrush = Ui.Pincel("#33FFFFFF"),
+                BorderThickness = new Thickness(1),
+                Effect = new DropShadowEffect { BlurRadius = 24, ShadowDepth = 4, Opacity = 0.5 }
+            };
+
+            // cabecalho: titulo no centro + engrenagem
+            var cab = new Grid { Margin = new Thickness(0, 0, 0, 12) };
+            _titulo.Foreground = Brushes.White; _titulo.FontSize = 15; _titulo.FontWeight = FontWeights.SemiBold;
+            _titulo.HorizontalAlignment = HorizontalAlignment.Center; _titulo.Background = Brushes.Transparent;
+            _titulo.ContextMenu = MenuTitulo();
+            var engrenagem = new TextBlock
+            {
+                Text = "⚙", FontFamily = new FontFamily("Segoe UI Symbol"), FontSize = 18, Foreground = Ui.Pincel("#BBFFFFFF"),
+                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+                Cursor = Cursors.Hand, Background = Brushes.Transparent, ToolTip = "Personalizar esta pasta", Padding = new Thickness(6, 0, 0, 0)
+            };
+            engrenagem.MouseLeftButtonUp += (s, e) => { _editando = !_editando; Montar(); };
+            cab.Children.Add(_titulo); cab.Children.Add(engrenagem);
+
+            var pilha = new StackPanel();
+            pilha.Children.Add(cab); pilha.Children.Add(_grade); pilha.Children.Add(_rodape);
+            moldura.Child = pilha;
+            Content = moldura;
+            moldura.Opacity = 0;
+            moldura.RenderTransform = _slide = new TranslateTransform(0, 14);
+
+            Drop += (s, e) =>
+            {
+                var arquivos = e.Data.GetData(DataFormats.FileDrop) as string[];
+                if (arquivos == null) return;
+                foreach (var f in arquivos)
+                {
+                    if (_pasta.Apps.Any(a => a.Alvo == f)) continue;
+                    _pasta.Apps.Add(Shell.NovoItemArquivo(f));
+                }
+                Salvar();
+            };
+            ContentRendered += (s, e) => { Reposicionar(); Activate(); Entrar(); };
+            SizeChanged += (s, e) => Reposicionar();
+            Activated += (s, e) => _ativou = true;
+            Closing += (s, e) => _fechando = true;
+            Deactivated += (s, e) => { if (_ativou && !_ocupado && !_fechando) FecharSuave(); };
+            KeyDown += (s, e) => { if (e.Key == Key.Escape) { if (_editando) { _editando = false; Montar(); } else FecharSuave(); } };
+            Closed += (s, e) => { _fechouEm = DateTime.Now; _fechouId = _pasta.Id; if (_aberto == this) _aberto = null; };
+            Montar();
+
+            // pontinhos de "app aberto": calcula em segundo plano para nao atrasar a abertura
+            Task.Run(() => Shell.AtualizarProcessos()).ContinueWith(t =>
+                Dispatcher.BeginInvoke(new Action(AtualizarPontos)));
+        }
+
+        // ---------- animacao: entra subindo e aparecendo; sai com fade rapido ----------
+        void Entrar()
+        {
+            if (_silencioso) { _moldura.Opacity = 1; _slide.Y = 0; return; }
+            var suave = new CubicEase { EasingMode = EasingMode.EaseOut };
+            _moldura.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(140)) { EasingFunction = suave });
+            _slide.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(14, 0, TimeSpan.FromMilliseconds(190)) { EasingFunction = suave });
+        }
+
+        void FecharSuave()
+        {
+            if (_saindo || _fechando) return;
+            _saindo = true;
+            _fechouEm = DateTime.Now; _fechouId = _pasta.Id;
+            var a = new DoubleAnimation(_moldura.Opacity, 0, TimeSpan.FromMilliseconds(90));
+            a.Completed += (s, e) => Close();
+            _moldura.BeginAnimation(OpacityProperty, a);
+        }
+
+        // ---------- conteudo ----------
+        void Montar()
+        {
+            _titulo.Text = _pasta.Nome;
+            _moldura.Background = Ui.FundoPainel(_pasta.Cor);
+            _grade.Children.Clear();
+            _pontos.Clear();
+            _grade.Columns = Math.Min(5, Math.Max(2, _pasta.Apps.Count + 1));
+            foreach (var app in _pasta.Apps.ToList())
+            {
+                var img = new Image { Width = 48, Height = 48, HorizontalAlignment = HorizontalAlignment.Center, Source = Ui.Carregar(app.Icone) };
+                RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
+                var ponto = new Ellipse { Width = 5, Height = 5, Margin = new Thickness(0, 4, 0, 0), Fill = Ui.Pincel("#7DD3FC"), Opacity = 0 };
+                var celula = NovaCelula(app.Nome, img, ponto);
+                _pontos.Add(Tuple.Create(app, ponto));
+                celula.ContextMenu = MenuApp(app);
+                var a = app;
+                var host = new Grid();
+                host.Children.Add(celula);
+                if (_editando)
+                {
+                    celula.Cursor = Cursors.SizeAll;
+                    ConfigurarArrasto(host, celula, a);
+                    var x = new Border
+                    {
+                        Width = 20, Height = 20, CornerRadius = new CornerRadius(10), Background = Ui.Pincel("#E5484D"),
+                        HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Cursor = Cursors.Hand,
+                        Child = new TextBlock { Text = "✕", Foreground = Brushes.White, FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, FontFamily = new FontFamily("Segoe UI Symbol") }
+                    };
+                    x.MouseLeftButtonUp += (s, e) => { _pasta.Apps.Remove(a); Salvar(); e.Handled = true; };
+                    host.Children.Add(x);
+                }
+                else
+                {
+                    celula.MouseLeftButtonUp += (s, e) => { Shell.Abrir(a); FecharSuave(); };
+                }
+                _grade.Children.Add(host);
+            }
+            var mais = new TextBlock
+            {
+                Text = "+", Foreground = Ui.Pincel("#99FFFFFF"), FontSize = 34, Height = 48,
+                HorizontalAlignment = HorizontalAlignment.Center, LineHeight = 44, LineStackingStrategy = LineStackingStrategy.BlockLineHeight
+            };
+            var cel = NovaCelula("Adicionar", mais, null);
+            cel.MouseLeftButtonUp += (s, e) =>
+            {
+                AppItem item = null;
+                Dialogo(() => item = Ui.EscolherApp(this));
+                if (item == null) return;
+                if (_pasta.Apps.Any(x => x.Alvo == item.Alvo)) return;
+                _pasta.Apps.Add(item);
+                Salvar();
+            };
+            _grade.Children.Add(cel);
+            _rodape.Content = _editando ? BarraEdicao() : Dica();
+            AtualizarPontos();
+            UpdateLayout();
+            Reposicionar();
+        }
+
+        void AtualizarPontos()
+        {
+            foreach (var t in _pontos) t.Item2.Opacity = Shell.Rodando(t.Item1) ? 1 : 0;
+        }
+
+        UIElement Dica()
+        {
+            return new TextBlock
+            {
+                Text = "Arraste apps para cá · ⚙ para personalizar",
+                Foreground = Ui.Pincel("#99FFFFFF"), FontSize = 10.5,
+                HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 10, 0, 0)
+            };
+        }
+
+        // Barra do modo de edicao: cores + acoes da pasta.
+        UIElement BarraEdicao()
+        {
+            var pl = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
+            var cores = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Center };
+            foreach (var c in Ui.Cores)
+            {
+                var cor = c;
+                bool atual = string.Equals(cor, _pasta.Cor, StringComparison.OrdinalIgnoreCase);
+                var b = new Border
+                {
+                    Width = 24, Height = 24, CornerRadius = new CornerRadius(12), Margin = new Thickness(4), Background = Ui.Pincel(cor),
+                    BorderBrush = atual ? Brushes.White : Ui.Pincel("#44FFFFFF"), BorderThickness = new Thickness(atual ? 2 : 1), Cursor = Cursors.Hand
+                };
+                b.MouseLeftButtonUp += (s, e) => { _pasta.Cor = cor; Salvar(); };
+                cores.Children.Add(b);
+            }
+            var acoes = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) };
+            acoes.Children.Add(Acao("Renomear", Renomear, false));
+            acoes.Children.Add(Acao("Nova pasta", NovaPasta, false));
+            acoes.Children.Add(Acao("Configurações", () => { FecharSuave(); App.AbrirConfiguracoes(); }, false));
+            acoes.Children.Add(Acao("Excluir", Excluir, true));
+            var acoes2 = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 6, 0, 0) };
+            acoes2.Children.Add(Acao(_pasta.MostrarNome ? "Nome no \u00edcone: ligado \u2713" : "Nome no \u00edcone: desligado", () => { _pasta.MostrarNome = !_pasta.MostrarNome; Salvar(); }, false));
+            pl.Children.Add(cores); pl.Children.Add(acoes); pl.Children.Add(acoes2);
+            pl.Children.Add(new TextBlock
+            {
+                Text = "Arraste os apps para reordenar · ✕ remove · ⚙ conclui",
+                Foreground = Ui.Pincel("#99FFFFFF"), FontSize = 10.5, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 10, 0, 0)
+            });
+            return pl;
+        }
+
+        Border Acao(string texto, Action acao, bool perigo)
+        {
+            var b = new Border
+            {
+                Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(3, 0, 3, 0), CornerRadius = new CornerRadius(8), Cursor = Cursors.Hand,
+                Background = Ui.Pincel(perigo ? "#33E5484D" : "#22FFFFFF"),
+                Child = new TextBlock { Text = texto, FontSize = 11.5, Foreground = perigo ? Ui.Pincel("#FF8A8E") : Brushes.White }
+            };
+            b.MouseLeftButtonUp += (s, e) => acao();
+            return b;
+        }
+
+        Border NovaCelula(string texto, UIElement icone, UIElement ponto)
+        {
+            var celula = new Border
+            {
+                Width = 92, Padding = new Thickness(4, 8, 4, 6), CornerRadius = new CornerRadius(12),
+                Background = Brushes.Transparent, Cursor = Cursors.Hand
+            };
+            var col = new StackPanel();
+            col.Children.Add(icone);
+            col.Children.Add(new TextBlock
+            {
+                Text = texto, Foreground = Brushes.White, FontSize = 11.5, TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxHeight = 32, Margin = new Thickness(0, 6, 0, 0)
+            });
+            col.Children.Add(ponto ?? new Ellipse { Width = 5, Height = 5, Margin = new Thickness(0, 4, 0, 0), Opacity = 0 });
+            celula.Child = col;
+            var hover = Ui.Pincel("#33FFFFFF");
+            celula.MouseEnter += (s, e) => celula.Background = hover;
+            celula.MouseLeave += (s, e) => celula.Background = Brushes.Transparent;
+            return celula;
+        }
+
+        // ---------- reordenar arrastando (modo de edicao) ----------
+        void ConfigurarArrasto(Grid host, Border celula, AppItem app)
+        {
+            Point? inicio = null;
+            celula.MouseLeftButtonDown += (s, e) => inicio = e.GetPosition(null);
+            celula.MouseMove += (s, e) =>
+            {
+                if (e.LeftButton != MouseButtonState.Pressed || inicio == null) return;
+                var d = e.GetPosition(null) - inicio.Value;
+                if (Math.Abs(d.X) < 6 && Math.Abs(d.Y) < 6) return;
+                inicio = null;
+                _ocupado = true;
+                try { DragDrop.DoDragDrop(celula, new DataObject(FormatoApp, _pasta.Apps.IndexOf(app).ToString()), DragDropEffects.Move); }
+                finally { _ocupado = false; Activate(); }
+            };
+            host.AllowDrop = true;
+            host.DragOver += (s, e) => { if (e.Data.GetDataPresent(FormatoApp)) { e.Effects = DragDropEffects.Move; e.Handled = true; } };
+            host.Drop += (s, e) =>
+            {
+                if (!e.Data.GetDataPresent(FormatoApp)) return;
+                int de = int.Parse((string)e.Data.GetData(FormatoApp)), para = _pasta.Apps.IndexOf(app);
+                e.Handled = true;
+                if (de < 0 || para < 0 || de == para) return;
+                var item = _pasta.Apps[de];
+                _pasta.Apps.RemoveAt(de);
+                _pasta.Apps.Insert(para, item);
+                Salvar();
+            };
+        }
+
+        // ---------- menus (botao direito) ----------
+        ContextMenu NovoMenu()
+        {
+            var m = new ContextMenu();
+            m.Opened += (s, e) => _ocupado = true;
+            m.Closed += (s, e) => _ocupado = false;
+            return m;
+        }
+
+        MenuItem Item(string texto, Action acao)
+        {
+            var mi = new MenuItem { Header = texto };
+            mi.Click += (s, e) => acao();
+            return mi;
+        }
+
+        ContextMenu MenuApp(AppItem app)
+        {
+            var m = NovoMenu();
+            m.Items.Add(Item("Mover para a esquerda", () => Mover(app, -1)));
+            m.Items.Add(Item("Mover para a direita", () => Mover(app, 1)));
+            m.Items.Add(Item("Remover da pasta", () => { _pasta.Apps.Remove(app); Salvar(); }));
+            return m;
+        }
+
+        ContextMenu MenuTitulo()
+        {
+            var m = NovoMenu();
+            m.Items.Add(Item("Renomear...", Renomear));
+            m.Items.Add(Item("Mudar cor...", MudarCor));
+            m.Items.Add(new Separator());
+            m.Items.Add(Item("Nova pasta...", NovaPasta));
+            m.Items.Add(Item("Configurações...", () => { FecharSuave(); App.AbrirConfiguracoes(); }));
+            m.Items.Add(new Separator());
+            m.Items.Add(Item("Excluir esta pasta", Excluir));
+            return m;
+        }
+
+        // ---------- acoes ----------
+        void Dialogo(Action a)
+        {
+            _ocupado = true;
+            try { a(); } finally { _ocupado = false; Activate(); }
+        }
+
+        void Salvar()
+        {
+            Repo.Salvar();
+            Shell.AtualizarPasta(_pasta);
+            Montar();
+        }
+
+        void Mover(AppItem app, int delta)
+        {
+            int i = _pasta.Apps.IndexOf(app), j = i + delta;
+            if (i < 0 || j < 0 || j >= _pasta.Apps.Count) return;
+            _pasta.Apps.RemoveAt(i); _pasta.Apps.Insert(j, app);
+            Salvar();
+        }
+
+        void Renomear()
+        {
+            string nome = null;
+            Dialogo(() => nome = Ui.PedirTexto(this, "Renomear pasta", _pasta.Nome));
+            if (nome == null || nome == _pasta.Nome) return;
+            Shell.ApagarAtalho(_pasta);
+            _pasta.Nome = nome;
+            Salvar();
+        }
+
+        void MudarCor()
+        {
+            string cor = null;
+            Dialogo(() => cor = Ui.EscolherCor(this));
+            if (cor == null) return;
+            _pasta.Cor = cor;
+            Salvar();
+        }
+
+        void NovaPasta()
+        {
+            string nome = null;
+            Dialogo(() => nome = Ui.PedirTexto(this, "Nome da nova pasta", ""));
+            if (nome == null) return;
+            var p = Repo.Criar(nome);
+            Repo.Salvar();
+            Shell.AtualizarPasta(p);
+            FecharSuave();
+            App.MostrarFixar(new[] { p });
+        }
+
+        void Excluir()
+        {
+            bool sim = false;
+            Dialogo(() => sim = MessageBox.Show("Excluir a pasta '" + _pasta.Nome + "'?\nOs apps em si não são apagados. Depois, desafixe o ícone dela da barra.",
+                "Excluir pasta", MessageBoxButton.YesNo) == MessageBoxResult.Yes);
+            if (!sim) return;
+            Shell.ApagarAtalho(_pasta);
+            Repo.Dados.Pastas.Remove(_pasta);
+            Repo.Salvar();
+            FecharSuave();
+        }
+
+        // ---------- posicao: acima da barra, centralizado onde o mouse clicou ----------
+        void Reposicionar()
+        {
+            if (!IsLoaded) return;
+            var src = PresentationSource.FromVisual(this);
+            if (src == null || src.CompositionTarget == null) return;
+            var m = src.CompositionTarget.TransformFromDevice;
+            var area = WF.Screen.FromPoint(_cursor).WorkingArea;
+            var tl = m.Transform(new Point(area.Left, area.Top));
+            var br = m.Transform(new Point(area.Right, area.Bottom));
+            var cur = m.Transform(new Point(_cursor.X, _cursor.Y));
+            double x = cur.X - ActualWidth / 2;
+            Left = Math.Max(tl.X, Math.Min(br.X - ActualWidth, x));
+            Top = br.Y - ActualHeight;
+        }
+    }
+}

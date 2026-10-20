@@ -1,0 +1,12 @@
+{
+  "grupos": [
+    { "nome": "IA", "apps": ["Claude", "ChatGPT", "Gemini", "Antigravity", "Comet", "AnythingLLM", "Ollama", "GitHub Copilot"] },
+    { "nome": "Redes Sociais", "apps": ["Discord", "Instagram", "LinkedIn", "Telegram", "WhatsApp"] },
+    { "nome": "Jogos", "apps": ["Steam", "Epic Games Launcher", "Forge of Empires", "Infinity Empires", "Viking Rise"] },
+    { "nome": "Google", "apps": ["Google Chrome", "Google Drive", "Gemini", "Calendário", "Email"] },
+    { "nome": "Microsoft", "apps": ["Word", "Excel", "PowerPoint", "Outlook", "OneNote", "OneDrive", "Microsoft To Do", "Microsoft Whiteboard"] },
+    { "nome": "Produtividade", "apps": ["Notion", "Obsidian", "Canva", "Bloco de notas", "Calculadora", "Ferramenta de Captura"] },
+    { "nome": "Dev", "apps": ["Visual Studio Code", "GitHub Desktop", "Docker Desktop", "Git Bash", "Android Studio", "Terminal"] },
+    { "nome": "Sistema", "apps": ["Gerenciador de Tarefas", "Configurações", "Explorador de Arquivos", "Painel de Controle"] }
+  ]
+}

@@ -1,0 +1,7 @@
+cache/
+atalhos/
+pastas.json
+.env
+*.log
+backup/
+dist/
