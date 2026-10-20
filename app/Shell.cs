@@ -235,7 +235,8 @@ namespace PastasBarra
         }
 
         // ---------- app aberto? (pontinho) ----------
-        static List<Tuple<string, string>> _procs = new List<Tuple<string, string>>();
+        // Usa so o NOME dos processos que tem janela (nao le titulos de janelas nem conteudo: privacidade).
+        static HashSet<string> _procs = new HashSet<string>();
 
         static string Norm(string s)
         {
@@ -244,35 +245,24 @@ namespace PastasBarra
 
         public static void AtualizarProcessos()
         {
-            var l = new List<Tuple<string, string>>();
+            var l = new HashSet<string>();
             foreach (var p in Process.GetProcesses())
             {
-                try { if (p.MainWindowHandle != IntPtr.Zero) l.Add(Tuple.Create(Norm(p.ProcessName), p.MainWindowTitle ?? "")); }
+                try { if (p.MainWindowHandle != IntPtr.Zero) l.Add(Norm(p.ProcessName)); }
                 catch { }
                 finally { p.Dispose(); }
             }
             _procs = l;
         }
 
-        // Titulos de janela costumam ser "Documento - Nome do app"; exigir isso evita falso positivo
-        // (ex.: uma aba de navegador com a palavra "Email" no titulo).
-        static bool TituloDoApp(string titulo, string nome)
-        {
-            if (string.IsNullOrEmpty(titulo)) return false;
-            var cmp = StringComparison.CurrentCultureIgnoreCase;
-            return string.Equals(titulo, nome, cmp)
-                || titulo.EndsWith(" - " + nome, cmp) || titulo.EndsWith(" \u2014 " + nome, cmp) || titulo.EndsWith(" \u2013 " + nome, cmp);
-        }
-
         public static bool Rodando(AppItem a)
         {
             string n = Norm(a.Nome);
             if (n.Length < 3) return false;
-            foreach (var t in _procs)
+            foreach (var proc in _procs)
             {
-                if (t.Item1 == n) return true;
-                if (n.Length >= 4 && t.Item1.Length >= 4 && (t.Item1.Contains(n) || n.Contains(t.Item1))) return true;
-                if (n.Length >= 4 && TituloDoApp(t.Item2, a.Nome)) return true;
+                if (proc == n) return true;
+                if (n.Length >= 4 && proc.Length >= 4 && (proc.Contains(n) || n.Contains(proc))) return true;
             }
             return false;
         }

@@ -20,7 +20,7 @@ namespace PastasBarra
         static Window _config, _assistente, _fixar;
 
         // Chamado por Inicio.Main depois de confirmar que esta e a instancia principal.
-        public static void Executar(string abrir, bool bandeja, string[] soltos, bool silencioso)
+        public static void Executar(string abrir, bool bandeja, string[] soltos)
         {
             Repo.Carregar();
             _app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
@@ -36,20 +36,6 @@ namespace PastasBarra
 
             _app.Dispatcher.BeginInvoke(new Action(() =>
             {
-                if (silencioso)
-                {
-                    // atualizacao automatica: instala por cima da copia instalada, sem perguntar, e reabre
-                    string erroInst;
-                    if (Instalador.Instalar(out erroInst))
-                    {
-                        Process.Start(new ProcessStartInfo(Instalador.ExeInstalado, "--aguardar --bandeja") { UseShellExecute = false });
-                        _app.Shutdown();
-                        return;
-                    }
-                    try { File.AppendAllText(Path.Combine(Repo.Raiz, "erro.log"), DateTime.Now + " Atualizacao falhou: " + erroInst + Environment.NewLine); } catch { }
-                    IniciarNormal(null, true);
-                    return;
-                }
                 bool perguntar = !Instalador.RodandoInstalado() && !Repo.Dados.ModoPortatil && !bandeja && abrir == null;
                 if (perguntar)
                 {
@@ -86,7 +72,8 @@ namespace PastasBarra
         {
             Task.Run(() =>
             {
-                try { var d = Path.Combine(Path.GetTempPath(), "PastasBarra-update"); if (Directory.Exists(d)) Directory.Delete(d, true); } catch { }
+                try { File.Delete(Instalador.ExeInstalado + ".old"); } catch { }
+                try { File.Delete(Instalador.ExeInstalado + ".novo"); } catch { }
             });
         }
 
@@ -128,6 +115,7 @@ namespace PastasBarra
                 Task.Run(() => { string erro; return new Tuple<bool, string>(Atualizador.BaixarEAplicar(r, out erro), erro); }).ContinueWith(u =>
                     _app.Dispatcher.BeginInvoke(new Action(() =>
                     {
+                        if (!u.IsFaulted && u.Result.Item1) { _app.Shutdown(); return; }   // a copia nova ja foi aberta
                         if (!u.IsFaulted && !u.Result.Item1 && manual) MessageBox.Show("N\u00e3o foi poss\u00edvel atualizar:\n" + u.Result.Item2, "Atualiza\u00e7\u00f5es");
                     })));
             })));

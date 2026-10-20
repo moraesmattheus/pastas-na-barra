@@ -94,47 +94,54 @@ namespace PastasBarra
             return n > a;
         }
 
-        // Baixa a versao nova para a pasta temporaria, confere o SHA-256 e abre o novo .exe em modo de atualizacao
-        // (ele pede para esta copia sair, se instala no lugar e reabre). Retorna false com o motivo em "erro".
+        // Baixa a versao nova para a PROPRIA pasta de instalacao (nunca para a temporaria), confere o SHA-256 e troca o
+        // arquivo por renomeacao (o Windows permite renomear um .exe em execucao). Nada baixado e executado de outro lugar:
+        // depois da troca, o programa apenas reabre o seu proprio .exe ja instalado.
         public static bool BaixarEAplicar(InfoAtualizacao info, out string erro)
         {
             erro = null;
+            string novo = Instalador.ExeInstalado + ".novo";
+            string velho = Instalador.ExeInstalado + ".old";
             try
             {
+                if (!Instalador.RodandoInstalado()) { erro = "Atualização automática só funciona no programa instalado."; return false; }
                 if (string.IsNullOrEmpty(info.UrlExe) || string.IsNullOrEmpty(info.UrlHash))
                 { erro = "A versão publicada não tem o arquivo e o hash esperados."; return false; }
                 if (!info.UrlExe.StartsWith(PrefixoDownload, StringComparison.Ordinal) || !info.UrlHash.StartsWith(PrefixoDownload, StringComparison.Ordinal))
                 { erro = "Endereço de download não confiável."; return false; }
 
                 PrepararRede();
-                string dir = Path.Combine(Path.GetTempPath(), "PastasBarra-update");
-                Directory.CreateDirectory(dir);
-                string exe = Path.Combine(dir, "PastasBarra-novo.exe");
                 string hashTxt;
                 using (var wc = new WebClient())
                 {
                     wc.Headers["User-Agent"] = "PastasBarra/" + Instalador.Versao;
                     hashTxt = wc.DownloadString(info.UrlHash);
-                    if (File.Exists(exe)) File.Delete(exe);
-                    wc.DownloadFile(info.UrlExe, exe);
+                    if (File.Exists(novo)) File.Delete(novo);
+                    wc.DownloadFile(info.UrlExe, novo);
                 }
-                var tam = new FileInfo(exe).Length;
-                if (tam < 100 * 1024 || tam > TamanhoMaximo) { File.Delete(exe); erro = "O arquivo baixado tem um tamanho inesperado."; return false; }
+                var tam = new FileInfo(novo).Length;
+                if (tam < 100 * 1024 || tam > TamanhoMaximo) { File.Delete(novo); erro = "O arquivo baixado tem um tamanho inesperado."; return false; }
 
                 string esperado = (hashTxt ?? "").Trim().Split(' ', '\t', '\r', '\n')[0];
                 string obtido;
                 using (var sha = SHA256.Create())
-                using (var fs = File.OpenRead(exe))
+                using (var fs = File.OpenRead(novo))
                     obtido = string.Concat(sha.ComputeHash(fs).Select(b => b.ToString("x2")));
                 if (!string.Equals(esperado, obtido, StringComparison.OrdinalIgnoreCase))
-                { File.Delete(exe); erro = "A verificação de integridade (SHA-256) falhou. A atualização foi descartada."; return false; }
+                { File.Delete(novo); erro = "A verificação de integridade (SHA-256) falhou. A atualização foi descartada."; return false; }
 
-                Process.Start(new ProcessStartInfo(exe, "--atualizar-silencioso") { UseShellExecute = false });
+                if (File.Exists(velho)) File.Delete(velho);
+                File.Move(Instalador.ExeInstalado, velho);
+                try { File.Move(novo, Instalador.ExeInstalado); }
+                catch { File.Move(velho, Instalador.ExeInstalado); throw; }   // desfaz se algo der errado
+
+                Process.Start(new ProcessStartInfo(Instalador.ExeInstalado, "--aguardar --bandeja") { UseShellExecute = false });
                 return true;
             }
             catch (Exception e)
             {
                 erro = e.Message;
+                try { if (File.Exists(novo)) File.Delete(novo); } catch { }
                 return false;
             }
         }
