@@ -1,3 +1,18 @@
+/*
+ * Copyright 2026 Mattheus Moraes
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -14,8 +29,9 @@ namespace PastasBarra
 {
     public class StartApp
     {
-        public string Nome;
-        public string AppId;
+        public string Nome { get; set; }
+        public string AppId { get; set; }
+        public string CaminhoArquivo { get; set; }
     }
 
     public static class Shell
@@ -133,6 +149,50 @@ namespace PastasBarra
         {
             if (_apps != null) return _apps;
             var lista = new List<StartApp>();
+            var nomesRegistrados = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // 1. Atalhos de programas instalados no Menu Iniciar e Desktop
+            try
+            {
+                var pastasAtalhos = new[]
+                {
+                    Environment.GetFolderPath(Environment.SpecialFolder.Programs),
+                    Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms),
+                    Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                    Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory)
+                };
+
+                foreach (var pasta in pastasAtalhos)
+                {
+                    if (string.IsNullOrEmpty(pasta) || !Directory.Exists(pasta)) continue;
+                    try
+                    {
+                        var arquivos = Directory.GetFiles(pasta, "*.lnk", SearchOption.AllDirectories);
+                        foreach (var f in arquivos)
+                        {
+                            try
+                            {
+                                string nomeSemExt = Path.GetFileNameWithoutExtension(f);
+                                if (string.IsNullOrEmpty(nomeSemExt)) continue;
+                                if (nomesRegistrados.Add(nomeSemExt))
+                                {
+                                    lista.Add(new StartApp
+                                    {
+                                        Nome = nomeSemExt.Trim(),
+                                        AppId = f,
+                                        CaminhoArquivo = f
+                                    });
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+
+            // 2. Aplicativos UWP da Windows Store e registrados via shell:AppsFolder
             try
             {
                 Guid appsFolder = new Guid("1e87508d-89c2-42f0-8a7e-645a0f50ca58");
@@ -151,13 +211,18 @@ namespace PastasBarra
                         string nome = Nome(item, 0);            // SIGDN_NORMALDISPLAY
                         string id = Nome(item, 0x80018001);     // SIGDN_PARENTRELATIVEPARSING = AppUserModelID
                         if (!string.IsNullOrEmpty(nome) && !string.IsNullOrEmpty(id))
-                            lista.Add(new StartApp { Nome = nome.Trim(), AppId = id });
+                        {
+                            if (nomesRegistrados.Add(nome.Trim()))
+                            {
+                                lista.Add(new StartApp { Nome = nome.Trim(), AppId = id });
+                            }
+                        }
                     }
                 }
             }
             catch { }
-            _apps = lista.GroupBy(a => a.Nome.ToLowerInvariant()).Select(g => g.First())
-                         .OrderBy(a => a.Nome, StringComparer.CurrentCultureIgnoreCase).ToList();
+
+            _apps = lista.OrderBy(a => a.Nome, StringComparer.CurrentCultureIgnoreCase).ToList();
             return _apps;
         }
 
@@ -225,6 +290,10 @@ namespace PastasBarra
 
         public static AppItem NovoItem(StartApp a)
         {
+            if (!string.IsNullOrEmpty(a.CaminhoArquivo) && (File.Exists(a.CaminhoArquivo) || Directory.Exists(a.CaminhoArquivo)))
+            {
+                return NovoItemArquivo(a.CaminhoArquivo);
+            }
             string alvo = "shell:AppsFolder\\" + a.AppId;
             return new AppItem { Nome = a.Nome, Alvo = alvo, Tipo = "shell", Icone = SalvarIcone(alvo, a.Nome) };
         }

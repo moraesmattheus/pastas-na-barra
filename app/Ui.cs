@@ -1,3 +1,18 @@
+﻿/*
+ * Copyright 2026 Mattheus Moraes
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -44,7 +59,7 @@ namespace PastasBarra
         // Paleta semantica dinamica que acompanha o tema do Windows
         public static SolidColorBrush CorTexto { get { return Pincel(TemaEscuro ? "#FFFFFF" : "#0F172A"); } }
         public static SolidColorBrush CorSubtexto { get { return Pincel(TemaEscuro ? "#94A3B8" : "#64748B"); } }
-        public static SolidColorBrush CorFundoJanela { get { return Pincel(TemaEscuro ? "#F2171922" : "#F8F8FAFC"); } }
+        public static SolidColorBrush CorFundoJanela { get { return Pincel(TemaEscuro ? "#FC181B24" : "#FCF8FAFC"); } }
         public static SolidColorBrush CorCard { get { return Pincel(TemaEscuro ? "#18FFFFFF" : "#0A000000"); } }
         public static SolidColorBrush CorCardHover { get { return Pincel(TemaEscuro ? "#26FFFFFF" : "#14000000"); } }
         public static SolidColorBrush CorBorda { get { return Pincel(TemaEscuro ? "#24FFFFFF" : "#1E000000"); } }
@@ -240,6 +255,11 @@ namespace PastasBarra
             btnFechar.Child = txtX;
             btnFechar.MouseEnter += (s, e) => { btnFechar.Background = Pincel("#E81123"); txtX.Foreground = Brushes.White; };
             btnFechar.MouseLeave += (s, e) => { btnFechar.Background = Brushes.Transparent; txtX.Foreground = CorSubtexto; };
+            btnFechar.PreviewMouseLeftButtonDown += (s, e) =>
+            {
+                e.Handled = true;
+                if (aoFechar != null) aoFechar(); else w.Close();
+            };
             btnFechar.MouseLeftButtonUp += (s, e) => { if (aoFechar != null) aoFechar(); else w.Close(); };
             cabecalho.Children.Add(btnFechar);
 
@@ -406,37 +426,193 @@ namespace PastasBarra
         {
             var apps = Shell.ListarApps();
             Grid corpo;
-            var w = CriarJanelaModerna(dono, "Adicionar aplicativo", 380, 520, out corpo);
+            var w = CriarJanelaModerna(dono, "Adicionar aplicativo", 430, 550, out corpo);
 
             var g = new Grid();
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Busca
             g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // Lista
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Rodape
 
-            // Campo de busca moderno
+            // Campo de busca moderno com bordas arredondadas e icone
+            var bordaBusca = new Border
+            {
+                CornerRadius = new CornerRadius(10),
+                Background = Pincel(TemaEscuro ? "#20FFFFFF" : "#0D000000"),
+                BorderBrush = CorBorda,
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(0, 0, 0, 10),
+                Padding = new Thickness(10, 7, 10, 7)
+            };
+            var gridBusca = new Grid();
+            gridBusca.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            gridBusca.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var iconeLupa = new TextBlock
+            {
+                Text = "🔍",
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0),
+                Opacity = 0.7
+            };
+            Grid.SetColumn(iconeLupa, 0);
+            gridBusca.Children.Add(iconeLupa);
+
             var tb = new TextBox
             {
-                Margin = new Thickness(0, 0, 0, 10),
-                Padding = new Thickness(10, 8, 10, 8),
                 FontSize = 13.5,
-                Background = Pincel(TemaEscuro ? "#20FFFFFF" : "#0D000000"),
-                Foreground = CorTexto,
-                BorderBrush = CorBorda,
-                BorderThickness = new Thickness(1)
-            };
-
-            var lb = new ListBox
-            {
                 Background = Brushes.Transparent,
-                BorderThickness = new Thickness(0),
                 Foreground = CorTexto,
-                FontSize = 13,
-                DisplayMemberPath = "Nome"
+                BorderThickness = new Thickness(0),
+                VerticalAlignment = VerticalAlignment.Center,
+                CaretBrush = CorTexto
             };
+            Grid.SetColumn(tb, 1);
+            gridBusca.Children.Add(tb);
+            bordaBusca.Child = gridBusca;
+
+            // Lista fluida moderna dentro de um ScrollViewer
+            var scroll = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+            var stackLista = new StackPanel();
+            scroll.Content = stackLista;
+
+            // Paleta de cores vibrantes para as iniciais dos apps
+            var coresAvatar = new[] { "#3B82F6", "#8B5CF6", "#EC4899", "#10B981", "#F59E0B", "#06B6D4", "#6366F1" };
 
             var rodape = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
             AppItem resp = null;
-            Action ok = () => { if (lb.SelectedItem != null) { resp = Shell.NovoItem((StartApp)lb.SelectedItem); w.Close(); } };
+            StartApp appSelecionado = null;
+            var cardsRenderizados = new List<Tuple<StartApp, Border, TextBlock>>();
+            int indiceSelecionado = 0;
+
+            Action ok = () =>
+            {
+                if (appSelecionado != null)
+                {
+                    resp = Shell.NovoItem(appSelecionado);
+                    w.Close();
+                }
+            };
+
+            Action<int> definirSelecao = (novoIdx) =>
+            {
+                if (cardsRenderizados.Count == 0) { appSelecionado = null; return; }
+                if (novoIdx < 0) novoIdx = 0;
+                if (novoIdx >= cardsRenderizados.Count) novoIdx = cardsRenderizados.Count - 1;
+                indiceSelecionado = novoIdx;
+
+                for (int i = 0; i < cardsRenderizados.Count; i++)
+                {
+                    bool ativo = (i == indiceSelecionado);
+                    var item = cardsRenderizados[i];
+                    item.Item2.Background = ativo ? Pincel("#2563EB") : Brushes.Transparent;
+                    item.Item3.Foreground = ativo ? Brushes.White : CorTexto;
+                    item.Item3.FontWeight = ativo ? FontWeights.SemiBold : FontWeights.Normal;
+                }
+                appSelecionado = cardsRenderizados[indiceSelecionado].Item1;
+                cardsRenderizados[indiceSelecionado].Item2.BringIntoView();
+            };
+
+            Action encher = () =>
+            {
+                stackLista.Children.Clear();
+                cardsRenderizados.Clear();
+                string f = tb.Text.Trim();
+
+                var filtrados = apps.Where(a => f.Length == 0 || a.Nome.IndexOf(f, StringComparison.CurrentCultureIgnoreCase) >= 0)
+                                    .Take(80)
+                                    .ToList();
+
+                if (filtrados.Count == 0)
+                {
+                    var vazio = new StackPanel { Margin = new Thickness(0, 40, 0, 0), HorizontalAlignment = HorizontalAlignment.Center };
+                    vazio.Children.Add(new TextBlock { Text = "🔍", FontSize = 28, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 8), Opacity = 0.5 });
+                    vazio.Children.Add(new TextBlock { Text = "Nenhum aplicativo encontrado", FontSize = 13.5, FontWeight = FontWeights.SemiBold, Foreground = CorTexto, HorizontalAlignment = HorizontalAlignment.Center });
+                    vazio.Children.Add(new TextBlock { Text = "Clique em 'Procurar arquivo...' para escolher qualquer executável.", FontSize = 11.5, Foreground = CorSubtexto, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) });
+                    stackLista.Children.Add(vazio);
+                    appSelecionado = null;
+                    return;
+                }
+
+                for (int i = 0; i < filtrados.Count; i++)
+                {
+                    var app = filtrados[i];
+                    int idxAtual = i;
+
+                    var card = new Border
+                    {
+                        CornerRadius = new CornerRadius(8),
+                        Padding = new Thickness(10, 7, 10, 7),
+                        Margin = new Thickness(0, 2, 4, 2),
+                        Background = Brushes.Transparent,
+                        Cursor = Cursors.Hand
+                    };
+
+                    var gItem = new Grid();
+                    gItem.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                    gItem.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                    // Avatar moderno com primeira letra
+                    string inicial = string.IsNullOrEmpty(app.Nome) ? "?" : app.Nome.Substring(0, 1).ToUpper();
+                    string corBg = coresAvatar[Math.Abs(app.Nome.GetHashCode()) % coresAvatar.Length];
+
+                    var avatar = new Border
+                    {
+                        Width = 28,
+                        Height = 28,
+                        CornerRadius = new CornerRadius(7),
+                        Background = Pincel(corBg),
+                        Margin = new Thickness(0, 0, 12, 0),
+                        Child = new TextBlock
+                        {
+                            Text = inicial,
+                            Foreground = Brushes.White,
+                            FontSize = 12,
+                            FontWeight = FontWeights.Bold,
+                            HorizontalAlignment = HorizontalAlignment.Center,
+                            VerticalAlignment = VerticalAlignment.Center
+                        }
+                    };
+                    Grid.SetColumn(avatar, 0);
+                    gItem.Children.Add(avatar);
+
+                    var txtNome = new TextBlock
+                    {
+                        Text = app.Nome,
+                        Foreground = CorTexto,
+                        FontSize = 13,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        TextTrimming = TextTrimming.CharacterEllipsis
+                    };
+                    Grid.SetColumn(txtNome, 1);
+                    gItem.Children.Add(txtNome);
+                    card.Child = gItem;
+
+                    card.MouseEnter += (s, e) =>
+                    {
+                        if (indiceSelecionado != idxAtual) card.Background = CorCardHover;
+                    };
+                    card.MouseLeave += (s, e) =>
+                    {
+                        if (indiceSelecionado != idxAtual) card.Background = Brushes.Transparent;
+                    };
+                    card.MouseLeftButtonDown += (s, e) =>
+                    {
+                        definirSelecao(idxAtual);
+                        if (e.ClickCount == 2) ok();
+                    };
+
+                    cardsRenderizados.Add(Tuple.Create(app, card, txtNome));
+                    stackLista.Children.Add(card);
+                }
+
+                definirSelecao(0);
+            };
 
             var procurar = Botao("Procurar arquivo...", () =>
             {
@@ -453,34 +629,57 @@ namespace PastasBarra
             rodape.Children.Add(procurar);
             rodape.Children.Add(btnAdicionar);
 
-            Grid.SetRow(tb, 0);
-            Grid.SetRow(lb, 1);
+            Grid.SetRow(bordaBusca, 0);
+            Grid.SetRow(scroll, 1);
             Grid.SetRow(rodape, 2);
-            g.Children.Add(tb);
-            g.Children.Add(lb);
+            g.Children.Add(bordaBusca);
+            g.Children.Add(scroll);
             g.Children.Add(rodape);
             corpo.Children.Add(g);
 
-            Action encher = () =>
-            {
-                string f = tb.Text.Trim();
-                lb.ItemsSource = apps.Where(a => f.Length == 0 || a.Nome.IndexOf(f, StringComparison.CurrentCultureIgnoreCase) >= 0).ToList();
-                if (lb.Items.Count > 0) lb.SelectedIndex = 0;
-            };
             encher();
             tb.TextChanged += (s, e) => encher();
 
-            lb.MouseDoubleClick += (s, e) => ok();
             w.KeyDown += (s, e) =>
             {
-                if (e.Key == Key.Enter && lb.SelectedItem != null) ok();
-                else if (e.Key == Key.Down && lb.SelectedIndex < lb.Items.Count - 1) lb.SelectedIndex++;
-                else if (e.Key == Key.Up && lb.SelectedIndex > 0) lb.SelectedIndex--;
+                if (e.Key == Key.Enter) { ok(); e.Handled = true; }
+                else if (e.Key == Key.Down) { definirSelecao(indiceSelecionado + 1); e.Handled = true; }
+                else if (e.Key == Key.Up) { definirSelecao(indiceSelecionado - 1); e.Handled = true; }
+                else if (e.Key == Key.Escape) { w.Close(); e.Handled = true; }
             };
 
             w.ContentRendered += (s, e) => tb.Focus();
             w.ShowDialog();
             return resp;
+        }
+
+        // Exporta qualquer elemento WPF como PNG transparente em alta definicao
+        public static void SalvarElementoComoPng(FrameworkElement el, string caminho, double larguraFixa = 0, double alturaFixa = 0)
+        {
+            double w = larguraFixa > 0 ? larguraFixa : el.Width;
+            double h = alturaFixa > 0 ? alturaFixa : el.Height;
+
+            if (double.IsNaN(w) || w <= 0) w = 680;
+            if (double.IsNaN(h) || h <= 0) h = 640;
+
+            var tamanho = new Size(w, h);
+            el.Measure(tamanho);
+            el.Arrange(new Rect(new Point(0, 0), tamanho));
+            el.UpdateLayout();
+
+            int iw = Math.Max(1, (int)Math.Ceiling(w));
+            int ih = Math.Max(1, (int)Math.Ceiling(h));
+
+            var rtb = new RenderTargetBitmap(iw, ih, 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(el);
+
+            var enc = new PngBitmapEncoder();
+            enc.Frames.Add(BitmapFrame.Create(rtb));
+            Directory.CreateDirectory(Path.GetDirectoryName(caminho));
+            using (var fs = File.Create(caminho))
+            {
+                enc.Save(fs);
+            }
         }
     }
 }

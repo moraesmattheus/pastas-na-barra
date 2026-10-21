@@ -1,3 +1,18 @@
+﻿/*
+ * Copyright 2026 Mattheus Moraes
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -62,6 +77,7 @@ namespace PastasBarra
                 if (p0 != null) { try { Painel.Aquecer(p0); } catch { } }
             }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             IniciarVerificacaoAutomatica();
+            IniciarMonitorClipboard();
             _app.Run();
             _tray.Visible = false;
             _tray.Dispose();
@@ -93,6 +109,33 @@ namespace PastasBarra
             if (!Repo.Dados.AtualizarAuto) return;
             if ((DateTime.UtcNow - new DateTime(Repo.Dados.UltimaChecagem, DateTimeKind.Utc)).TotalHours < 5) return;
             VerificarAtualizacao(false);
+        }
+
+        // Monitor de estabilidade para evitar travamentos de subsistema do Windows 11 (TextInputHost / Win + V)
+        static void IniciarMonitorClipboard()
+        {
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+            timer.Tick += (s, e) =>
+            {
+                Task.Run(() =>
+                {
+                    try
+                    {
+                        foreach (var p in Process.GetProcessesByName("TextInputHost"))
+                        {
+                            using (p)
+                            {
+                                if (!p.Responding)
+                                {
+                                    p.Kill();
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                });
+            };
+            timer.Start();
         }
 
         static void AoClicarNoAviso(object remetente, EventArgs e) { VerificarAtualizacao(true); }

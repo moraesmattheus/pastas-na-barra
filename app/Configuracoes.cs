@@ -1,3 +1,18 @@
+﻿/*
+ * Copyright 2026 Mattheus Moraes
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -33,14 +48,17 @@ namespace PastasBarra
         Border _btnSolido;
         readonly List<Tuple<int, Border>> _botoesCantos = new List<Tuple<int, Border>>();
 
+        Border _moldura;
+        public Border Moldura { get { return _moldura; } }
+
         Pasta _selecionada;
         int _abaAtiva = 0; // 0 = Pastas, 1 = Aparencia, 2 = Reflexao
 
         public ConfiguracoesJanela()
         {
             Title = "Pastas na barra · Configurações";
-            Width = 680;
-            Height = 640;
+            Width = 740;
+            Height = 630;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             WindowStyle = WindowStyle.None;
             AllowsTransparency = true;
@@ -70,6 +88,7 @@ namespace PastasBarra
                 Margin = new Thickness(12),
                 Effect = new DropShadowEffect { BlurRadius = 28, ShadowDepth = 6, Opacity = 0.45, Color = Colors.Black }
             };
+            _moldura = moldura;
 
             var gridPrincipal = new Grid();
             gridPrincipal.RowDefinitions.Add(new RowDefinition { Height = new GridLength(42) }); // cabecalho
@@ -112,6 +131,11 @@ namespace PastasBarra
             };
             btnMinimizar.MouseEnter += (s, e) => btnMinimizar.Background = Ui.CorCardHover;
             btnMinimizar.MouseLeave += (s, e) => btnMinimizar.Background = Brushes.Transparent;
+            btnMinimizar.PreviewMouseLeftButtonDown += (s, e) =>
+            {
+                e.Handled = true;
+                WindowState = WindowState.Minimized;
+            };
             btnMinimizar.MouseLeftButtonUp += (s, e) => WindowState = WindowState.Minimized;
             botoesCabecalho.Children.Add(btnMinimizar);
 
@@ -123,6 +147,11 @@ namespace PastasBarra
             var txtX = (TextBlock)btnFechar.Child;
             btnFechar.MouseEnter += (s, e) => { btnFechar.Background = Ui.Pincel("#E81123"); txtX.Foreground = Brushes.White; };
             btnFechar.MouseLeave += (s, e) => { btnFechar.Background = Brushes.Transparent; txtX.Foreground = Ui.CorSubtexto; };
+            btnFechar.PreviewMouseLeftButtonDown += (s, e) =>
+            {
+                e.Handled = true;
+                Close();
+            };
             btnFechar.MouseLeftButtonUp += (s, e) => Close();
             botoesCabecalho.Children.Add(btnFechar);
 
@@ -226,6 +255,11 @@ namespace PastasBarra
             return b;
         }
 
+        public void SelecionarAba(int indice)
+        {
+            AlternarAba(indice);
+        }
+
         void AlternarAba(int indice)
         {
             _abaAtiva = indice;
@@ -303,10 +337,15 @@ namespace PastasBarra
         // ---------- ABA 2: APARÊNCIA, VIDRO & PROFUNDIDADE ----------
         void MontarPainelAparencia()
         {
-            _painelAparencia.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.1, GridUnitType.Star) });
-            _painelAparencia.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.9, GridUnitType.Star) });
+            _painelAparencia.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.35, GridUnitType.Star) });
+            _painelAparencia.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.95, GridUnitType.Star) });
 
-            var scrollControles = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 0, 14, 0) };
+            var scrollControles = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Margin = new Thickness(0, 0, 14, 0)
+            };
             var stackControles = new StackPanel();
 
             // 1. Estilo de Fundo (Vidro vs Solido)
@@ -323,7 +362,7 @@ namespace PastasBarra
             stEstilo.Children.Add(new TextBlock { Text = "Material do Fundo", FontSize = 13.5, FontWeight = FontWeights.SemiBold, Foreground = Ui.CorTexto });
             stEstilo.Children.Add(new TextBlock { Text = "Translúcido com leve passagem de luz ou acetinado sólido.", FontSize = 11, Foreground = Ui.CorSubtexto, Margin = new Thickness(0, 2, 0, 8), TextWrapping = TextWrapping.Wrap });
 
-            var rowEstilos = new StackPanel { Orientation = Orientation.Horizontal };
+            var rowEstilos = new WrapPanel { Orientation = Orientation.Horizontal };
             _btnVidro = Ui.Botao("💎 Vidro Translúcido", () =>
             {
                 Repo.Dados.EstiloVisual = "Vidro";
@@ -331,6 +370,7 @@ namespace PastasBarra
                 AtualizarBotoesEstilo();
                 AtualizarPreview();
             }, Repo.Dados.EstiloVisual != "Solido");
+            _btnVidro.Margin = new Thickness(0, 0, 8, 8);
 
             _btnSolido = Ui.Botao("🏛 Sólido Acetinado", () =>
             {
@@ -339,6 +379,7 @@ namespace PastasBarra
                 AtualizarBotoesEstilo();
                 AtualizarPreview();
             }, Repo.Dados.EstiloVisual == "Solido");
+            _btnSolido.Margin = new Thickness(0, 0, 8, 8);
 
             rowEstilos.Children.Add(_btnVidro);
             rowEstilos.Children.Add(_btnSolido);
@@ -434,7 +475,7 @@ namespace PastasBarra
             stCantos.Children.Add(new TextBlock { Text = "Curvatura dos Cantos", FontSize = 13.5, FontWeight = FontWeights.SemiBold, Foreground = Ui.CorTexto });
             stCantos.Children.Add(new TextBlock { Text = "Ajuste o raio de arredondamento das bordas das janelas.", FontSize = 11, Foreground = Ui.CorSubtexto, Margin = new Thickness(0, 2, 0, 8) });
 
-            var rowCantos = new StackPanel { Orientation = Orientation.Horizontal };
+            var rowCantos = new WrapPanel { Orientation = Orientation.Horizontal };
             _botoesCantos.Clear();
             Action<int, string> addOpcaoCanto = (raio, label) =>
             {
@@ -445,6 +486,7 @@ namespace PastasBarra
                     AtualizarBotoesCantos();
                     AtualizarPreview();
                 }, Repo.Dados.CantosArredondados == raio);
+                btn.Margin = new Thickness(0, 0, 8, 8);
                 _botoesCantos.Add(Tuple.Create(raio, btn));
                 rowCantos.Children.Add(btn);
             };
